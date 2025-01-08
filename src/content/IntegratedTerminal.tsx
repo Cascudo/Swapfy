@@ -166,11 +166,14 @@ const IntegratedTerminal = (props: {
                     ) : null}
                     <div
                         id="integrated-terminal"
-                        className={`flex w-full max-w-[420px] justify-center bg-[#13111C] rounded-xl shadow-lg relative backdrop-blur-sm border border-white/10 hover:border-[#14F195]/50 transition-all duration-300 animate-fadeIn ${!isLoaded ? 'visible' : ''}`}
+                        className={`flex w-full max-w-[420px] justify-center bg-[#13111C] rounded-xl shadow-lg relative backdrop-blur-sm border border-white/10 hover:border-[#14F195]/50 transition-all duration-300 animate-fadeIn [&_button]:!text-white [&_*]:!text-opacity-100 ${!isLoaded ? 'visible' : ''}`}
                         style={{
                             minHeight: '600px',
                             height: 'auto',
                             background: '#13111C',
+                            WebkitFontSmoothing: 'antialiased',
+                            MozOsxFontSmoothing: 'grayscale',
+                            textRendering: 'optimizeLegibility'
                         }}
                     />
                 </div>

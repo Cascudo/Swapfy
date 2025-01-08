@@ -9,6 +9,16 @@ module.exports = {
   mode: 'jit',
   darkMode: 'class',
   content: ['./src/**/*.{js,ts,jsx,tsx}'],
+  safelist: [ // Added safelist
+    'text-xs',
+    'text-sm',
+    'text-md',
+    'font-normal',
+    'font-medium',
+    'font-semibold',
+    'text-white',
+    'text-opacity-100'
+  ],
   theme: {
     extend: {
       colors: {
