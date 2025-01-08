@@ -65,7 +65,7 @@
   -webkit-mask-composite: source-out;
 }
 
-  /* Add tooltip functionality */
+/* Add tooltip functionality */
 .jupiter-tooltip {
   @apply invisible absolute;
   @apply bg-black text-white p-2 rounded-lg;
@@ -74,6 +74,7 @@
 .jupiter-has-tooltip:hover .jupiter-tooltip {
   @apply visible z-50;
 }
+
 #integrated-terminal {
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -86,7 +87,8 @@
   text-rendering: optimizeLegibility !important;
   -webkit-font-smoothing: antialiased !important;
 }
-/* Add this to your existing globals.css */
+
+/* Updated button styles */
 #integrated-terminal .jup-gradient {
   position: relative;
   z-index: 1;
@@ -105,6 +107,21 @@
 #integrated-terminal button[type="button"] {
   color: white !important;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  letter-spacing: 0.02em !important;
+  font-weight: 600 !important;
+  background: linear-gradient(180deg, #2A2D3A 0%, #1F2129 100%);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+/* Special handling for Connect Wallet and Swap buttons */
+#integrated-terminal button[type="button"].jup-gradient {
+  background: linear-gradient(91.26deg, #fcc00a 15.73%, #4ebae9 83.27%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+#integrated-terminal button[type="button"].jup-gradient:hover {
+  border-color: rgba(255, 255, 255, 0.2);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 
 #integrated-terminal input {
