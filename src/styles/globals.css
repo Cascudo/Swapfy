@@ -86,3 +86,28 @@
   text-rendering: optimizeLegibility !important;
   -webkit-font-smoothing: antialiased !important;
 }
+/* Add this to your existing globals.css */
+#integrated-terminal .jup-gradient {
+  position: relative;
+  z-index: 1;
+  background: linear-gradient(91.26deg, #fcc00a 15.73%, #4ebae9 83.27%);
+}
+
+#integrated-terminal .jup-gradient::before {
+  content: '';
+  position: absolute;
+  inset: 1px;
+  background: #191B1F;
+  border-radius: inherit;
+  z-index: -1;
+}
+
+#integrated-terminal button[type="button"] {
+  color: white !important;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+#integrated-terminal input {
+  color: white !important;
+  opacity: 1 !important;
+}
