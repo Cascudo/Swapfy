@@ -16,11 +16,19 @@ class MyDocument extends Document {
 
           <link rel="manifest" href="/manifest.json" crossOrigin="use-credentials" />
           <link rel="apple-touch-icon" href="/apple-icon-57x57.png" />
-          <link rel="preconnect" href="https://fonts.googleapis.com" />
-          <link rel="preconnect" href="https://fonts.gstatic.com" />
+          
+          {/* Optimized font loading */}
+          <link rel="preconnect" href="https://fonts.googleapis.com" crossOrigin="anonymous" />
+          <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+          <link
+            rel="preload"
+            as="style"
+            href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+          />
           <link
             href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
             rel="stylesheet"
+            crossOrigin="anonymous"
           />
         </Head>
         {/* Default to dark mode */}
