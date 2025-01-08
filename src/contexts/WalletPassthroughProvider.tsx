@@ -1,7 +1,7 @@
 import { SendTransactionOptions, useWallet, Wallet, WalletContextState, WalletName } from '@jup-ag/wallet-adapter';
 import { Connection, PublicKey, Transaction, VersionedTransaction } from '@solana/web3.js';
 import { useAtom } from 'jotai';
-import React, { createContext, FC, PropsWithChildren, ReactNode, useContext, useMemo } from 'react';
+import React, { createContext, FC, PropsWithChildren, ReactNode, useContext, useMemo, useEffect, useState } from 'react';
 import { appProps } from 'src/library';
 
 const initialPassThrough: WalletContextState = {
@@ -36,6 +36,11 @@ const FromWalletAdapter: FC<PropsWithChildren> = ({ children }) => {
 const WalletPassthroughProvider: FC<{ children: ReactNode }> = ({ children }) => {
   const [atom] = useAtom(appProps);
   const wallet = atom?.passthroughWalletContextState?.wallet;
+  const [isClient, setIsClient] = useState(false);
+
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
 
   const walletPassthrough: WalletContextState = useMemo(() => {
     return {
@@ -53,7 +58,13 @@ const WalletPassthroughProvider: FC<{ children: ReactNode }> = ({ children }) =>
     };
   }, [atom?.passthroughWalletContextState, wallet?.adapter]);
 
-  if (!window.Jupiter.enableWalletPassthrough) {
+  // Only run client-side code after mounting
+  if (!isClient) {
+    return <WalletPassthroughContext.Provider value={initialPassThrough}>{children}</WalletPassthroughContext.Provider>;
+  }
+
+  // Now safe to check window object
+  if (typeof window !== 'undefined' && !window.Jupiter?.enableWalletPassthrough) {
     return <FromWalletAdapter>{children}</FromWalletAdapter>;
   }
 

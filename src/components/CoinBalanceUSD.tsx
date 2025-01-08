@@ -12,24 +12,45 @@ interface ComponentProps {
 }
 
 export const CoinBalanceUSD = (props: ComponentProps) => {
-  const { tokenInfo, amount, maxDecimals, prefix = '' } = props;
+  const { tokenInfo, amount, maxDecimals = 2, prefix = '' } = props;
   const { tokenPriceMap, getUSDValue } = useUSDValue();
-  const address = tokenInfo.address;
-  const cgPrice = address ? tokenPriceMap[address]?.usd || 0 : 0;
+  const address = tokenInfo?.address;
 
+  // Get price from Jupiter price feed
+  const tokenPrice = useMemo(() => {
+    if (!address) return 0;
+    const priceData = tokenPriceMap[address];
+    return priceData?.usd || 0;
+  }, [address, tokenPriceMap]);
+
+  // Calculate USD value
   const amountInUSD = useMemo(() => {
-    if (!amount || !hasNumericValue(amount)) return new Decimal(0);
-    return new Decimal(amount).mul(cgPrice)
-  }, [amount, cgPrice]);
+    if (!amount || !hasNumericValue(amount) || !tokenPrice) {
+      return new Decimal(0);
+    }
 
-  // effects
+    try {
+      const amountDecimal = new Decimal(amount);
+      return amountDecimal.mul(tokenPrice);
+    } catch (e) {
+      console.error('Error calculating USD value:', e);
+      return new Decimal(0);
+    }
+  }, [amount, tokenPrice]);
+
+  // Fetch price data if needed
   useEffect(() => {
-    if (address) getUSDValue([address]);
+    if (address) {
+      getUSDValue([address]);
+    }
   }, [address, getUSDValue]);
+
+  // Format the USD value with appropriate precision
+  const formattedValue = formatNumber.format(amountInUSD, maxDecimals);
 
   return (
     <>
-      {prefix}${formatNumber.format(amountInUSD, maxDecimals || 2)}
+      {prefix}${formattedValue}
     </>
   );
 };

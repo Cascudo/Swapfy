@@ -1,290 +1,260 @@
+// _app.tsx
+
+// Standard package imports
 import { UnifiedWalletButton, UnifiedWalletProvider } from '@jup-ag/wallet-adapter';
+import { ConnectionProvider } from '@solana/wallet-adapter-react';
+import { useConnection } from '@jup-ag/wallet-adapter';
+import { useWallet } from '@solana/wallet-adapter-react';
+import { JupiterProvider } from '@jup-ag/react-hook';
 import { DefaultSeo } from 'next-seo';
 import type { AppProps } from 'next/app';
 import React, { ReactNode, useEffect, useMemo, useState } from 'react';
+import { SolflareWalletAdapter } from '@solana/wallet-adapter-wallets';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import classNames from 'classnames';
 
+// Styles
 import 'tailwindcss/tailwind.css';
 import '../styles/globals.css';
 
+// Components
 import AppHeader from 'src/components/AppHeader/AppHeader';
 import Footer from 'src/components/Footer/Footer';
-
-import { SolflareWalletAdapter, UnsafeBurnerWalletAdapter } from '@solana/wallet-adapter-wallets';
-import classNames from 'classnames';
-import { useForm } from 'react-hook-form';
 import CodeBlocks from 'src/components/CodeBlocks/CodeBlocks';
 import FormConfigurator from 'src/components/FormConfigurator';
-import { IFormConfigurator, INITIAL_FORM_CONFIG, JUPITER_DEFAULT_RPC } from 'src/constants';
 import IntegratedTerminal from 'src/content/IntegratedTerminal';
-import ModalTerminal from 'src/content/ModalTerminal';
-import WidgetTerminal from 'src/content/WidgetTerminal';
-import { IInit } from 'src/types';
 import V2SexyChameleonText from 'src/components/SexyChameleonText/V2SexyChameleonText';
 import FeatureShowcaseButton from 'src/components/FeatureShowcaseButton';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+
+// Icons
+import SwapfyIcon from 'src/icons/SwapfyIcon';
+
+// Constants and Types
+import { JUPITER_DEFAULT_RPC } from 'src/constants';
+import { IInit } from 'src/types';
+
+// State Management
 import { setTerminalInView } from 'src/stores/jotai-terminal-in-view';
+
+// Context Providers
+import { TokenContextProvider } from 'src/contexts/TokenContextProvider';
+import { SwapContextProvider } from 'src/contexts/SwapContext';
+import { NetworkConfigurationProvider } from 'src/contexts/NetworkConfigurationProvider';
+import WalletPassthroughProvider from 'src/contexts/WalletPassthroughProvider';
+
+// Initialize QueryClient outside of the App component to prevent SSR issues
+const queryClient = new QueryClient({
+    defaultOptions: {
+        queries: {
+            refetchOnWindowFocus: false,
+        },
+    },
+});
 
 const isDevNodeENV = process.env.NODE_ENV === 'development';
 const isDeveloping = isDevNodeENV && typeof window !== 'undefined';
-// In NextJS preview env settings
 const isPreview = Boolean(process.env.NEXT_PUBLIC_IS_NEXT_PREVIEW);
+
 if ((isDeveloping || isPreview) && typeof window !== 'undefined') {
-  // Initialize an empty value, simulate webpack IIFE when imported
-  (window as any).Jupiter = {};
+    (window as any).Jupiter = {};
 
-  // Perform local fetch on development, and next preview
-  Promise.all([import('../library'), import('../index')]).then((res) => {
-    const [libraryProps, rendererProps] = res;
-
-    (window as any).Jupiter = libraryProps;
-    (window as any).JupiterRenderer = rendererProps;
-  });
+    Promise.all([import('../library'), import('../index')]).then((res) => {
+        const [libraryProps, rendererProps] = res;
+        (window as any).Jupiter = libraryProps;
+        (window as any).JupiterRenderer = rendererProps;
+    });
 }
 
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      refetchOnWindowFocus: false,
-    },
-  },
-});
-
 export default function App({ Component, pageProps }: AppProps) {
-  const [tab, setTab] = useState<IInit['displayMode']>('integrated');
+    // Removed QueryClient initialization from here
 
-  // Cleanup on tab change
-  useEffect(() => {
-    if (window.Jupiter._instance) {
-      window.Jupiter._instance = null;
+    const [tab, setTab] = useState<IInit['displayMode']>('integrated');
+    
+    useEffect(() => {
+        if (typeof window !== 'undefined' && window.Jupiter && window.Jupiter._instance) {
+            window.Jupiter._instance = null;
+        }
+        setTerminalInView(false);
+    }, [tab]);
+
+    const rpcUrl = useMemo(() => JUPITER_DEFAULT_RPC, []);
+    const endpoint = useMemo(() => rpcUrl, [rpcUrl]);
+
+    const watchAllFields = {
+        simulateWalletPassthrough: true,
+        refetchIntervalForTokenAccounts: 10000,
+        formProps: {},
+        strictTokenList: true,
+        defaultExplorer: 'solscan',
+        useUserSlippage: false
+    };
+
+    const wallets = useMemo(() => [new SolflareWalletAdapter()], []);
+
+    const ShouldWrapWalletProvider = useMemo(() => {
+        return watchAllFields.simulateWalletPassthrough
+            ? ({ children }: { children: ReactNode }) => (
+                <UnifiedWalletProvider
+                    wallets={wallets}
+                    config={{
+                        env: 'mainnet-beta',
+                        autoConnect: true,
+                        metadata: {
+                            name: 'SWAPFY Terminal',
+                            description: '',
+                            url: 'https://swapfy.fun',
+                            iconUrls: ['/swapfy-logo.svg'],
+                        },
+                        theme: 'jupiter',
+                    }}
+                >
+                    {children}
+                </UnifiedWalletProvider>
+            )
+            : React.Fragment;
+    }, [wallets, watchAllFields.simulateWalletPassthrough]);
+
+    // Provide defaults for SwapContextProvider
+    const [asLegacyTransaction, setAsLegacyTransaction] = useState(false);
+    const displayMode: IInit['displayMode'] = 'integrated';
+    const scriptDomain: IInit['scriptDomain'] = 'localhost';
+    const formProps = watchAllFields.formProps;
+
+    return (
+        <QueryClientProvider client={queryClient}>
+            <DefaultSeo 
+                title={'SWAPFY Decentralized Exchange'}
+                openGraph={{
+                    type: 'website',
+                    locale: 'en',
+                    title: 'SWAPFY Decentralized Exchange',
+                    description: 'SWAPFY Decentralized Exchange: An open-sourced, DEX liquidity pool aggregator that provides end-to-end swap flow.',
+                    url: 'https://swapfy.fun',
+                    site_name: 'SWAPFY Decentralized Solana Exchange',
+                    images: [
+                        {
+                            url: `https://swapfy.fun/swapfy-logo.svg`,
+                            alt: 'SWAPFY Decentralized Solana Exchange',
+                        },
+                    ],
+                }}
+                twitter={{
+                    cardType: '/swapfy-fast-trading-terminal.png',
+                    site: 'Swapfy',
+                    handle: '@swapfydotfun'
+                }}
+            />
+            <ConnectionProvider endpoint={endpoint}>
+                <NetworkConfigurationProvider localStoragePrefix="swapfy">
+                    {/* Only render WalletPassthroughProvider on client side */}
+                    {typeof window !== 'undefined' ? (
+                        <WalletPassthroughProvider>
+                            <AppWithConnection
+                                Component={Component}
+                                pageProps={pageProps}
+                                watchAllFields={watchAllFields}
+                                ShouldWrapWalletProvider={ShouldWrapWalletProvider}
+                                displayMode={displayMode}
+                                scriptDomain={scriptDomain}
+                                asLegacyTransaction={asLegacyTransaction}
+                                setAsLegacyTransaction={setAsLegacyTransaction}
+                                formProps={formProps}
+                                rpcUrl={rpcUrl}
+                            />
+                        </WalletPassthroughProvider>
+                    ) : (
+                        <AppWithConnection
+                            Component={Component}
+                            pageProps={pageProps}
+                            watchAllFields={watchAllFields}
+                            ShouldWrapWalletProvider={ShouldWrapWalletProvider}
+                            displayMode={displayMode}
+                            scriptDomain={scriptDomain}
+                            asLegacyTransaction={asLegacyTransaction}
+                            setAsLegacyTransaction={setAsLegacyTransaction}
+                            formProps={formProps}
+                            rpcUrl={rpcUrl}
+                        />
+                    )}
+                </NetworkConfigurationProvider>
+            </ConnectionProvider>
+        </QueryClientProvider>
+    );
+}
+
+// Separate component to use hooks that require connection context
+function AppWithConnection({ 
+    Component, 
+    pageProps, 
+    watchAllFields,
+    ShouldWrapWalletProvider,
+    displayMode,
+    scriptDomain,
+    asLegacyTransaction,
+    setAsLegacyTransaction,
+    formProps,
+    rpcUrl
+}: {
+    Component: React.ComponentType<any>;
+    pageProps: any;
+    watchAllFields: {
+        simulateWalletPassthrough: boolean;
+        refetchIntervalForTokenAccounts: number;
+        formProps: object;
+        strictTokenList: boolean;
+        defaultExplorer: string;
+        useUserSlippage: boolean;
+    };
+    ShouldWrapWalletProvider: React.ComponentType<{ children: ReactNode }>;
+    displayMode: IInit['displayMode'];
+    scriptDomain: IInit['scriptDomain'];
+    asLegacyTransaction: boolean;
+    setAsLegacyTransaction: React.Dispatch<React.SetStateAction<boolean>>;
+    formProps: object;
+    rpcUrl: string;
+}) {
+    const { connection } = useConnection();
+    const walletContextState = useWallet();
+    const walletPublicKey = walletContextState?.publicKey || undefined;
+
+    const content = (
+        <JupiterProvider
+            connection={connection}
+            userPublicKey={walletPublicKey}
+            routeCacheDuration={300000} // 5 minutes in milliseconds
+            wrapUnwrapSOL={true}
+        >
+            <TokenContextProvider formProps={formProps}>
+                <SwapContextProvider
+                    displayMode={displayMode}
+                    scriptDomain={scriptDomain}
+                    asLegacyTransaction={asLegacyTransaction}
+                    setAsLegacyTransaction={setAsLegacyTransaction}
+                    formProps={formProps}
+                >
+                    <div className="bg-v3-bg min-h-screen w-screen max-w-screen overflow-x-hidden flex flex-col justify-between">
+                        <div>
+                            <AppHeader />
+                            <Component
+                                {...pageProps}
+                                rpcUrl={rpcUrl}
+                                watchAllFields={watchAllFields}
+                                ShouldWrapWalletProvider={ShouldWrapWalletProvider}
+                            />
+                        </div>
+                        <div className="w-full mt-auto">
+                            <Footer />
+                        </div>
+                    </div>
+                </SwapContextProvider>
+            </TokenContextProvider>
+        </JupiterProvider>
+    );
+
+    // If we have a custom wallet provider wrapper, use it
+    if (ShouldWrapWalletProvider !== React.Fragment) {
+        return <ShouldWrapWalletProvider>{content}</ShouldWrapWalletProvider>;
     }
 
-    setTerminalInView(false);
-  }, [tab]);
-
-  const rpcUrl = useMemo(() => JUPITER_DEFAULT_RPC, []);
-
-  const { watch, reset, setValue, formState } = useForm<IFormConfigurator>({
-    defaultValues: INITIAL_FORM_CONFIG,
-  });
-
-  const watchAllFields = watch();
-
-  // Solflare wallet adapter comes with Metamask Snaps supports
-  const wallets = useMemo(() => [new UnsafeBurnerWalletAdapter(), new SolflareWalletAdapter()], []);
-
-  const ShouldWrapWalletProvider = useMemo(() => {
-    return watchAllFields.simulateWalletPassthrough
-      ? ({ children }: { children: ReactNode }) => (
-          <UnifiedWalletProvider
-            wallets={wallets}
-            config={{
-              env: 'mainnet-beta',
-              autoConnect: true,
-              metadata: {
-                name: 'Jupiter Terminal',
-                description: '',
-                url: 'https://terminal.jup.ag',
-                iconUrls: [''],
-              },
-              theme: 'jupiter',
-            }}
-          >
-            {children}
-          </UnifiedWalletProvider>
-        )
-      : React.Fragment;
-  }, [wallets, watchAllFields.simulateWalletPassthrough]);
-
-  return (
-    <QueryClientProvider client={queryClient}>
-      <DefaultSeo
-        title={'Jupiter Terminal'}
-        openGraph={{
-          type: 'website',
-          locale: 'en',
-          title: 'Jupiter Terminal',
-          description: 'Jupiter Terminal: An open-sourced, lite version of Jupiter that provides end-to-end swap flow.',
-          url: 'https://terminal.jup.ag/',
-          site_name: 'Jupiter Terminal',
-          images: [
-            {
-              url: `https://og.jup.ag/api/jupiter`,
-              alt: 'Jupiter Aggregator',
-            },
-          ],
-        }}
-        twitter={{
-          cardType: 'summary_large_image',
-          site: 'jup.ag',
-          handle: '@JupiterExchange',
-        }}
-      />
-
-      <div className="bg-v3-bg h-screen w-screen max-w-screen overflow-x-hidden flex flex-col justify-between">
-        <div>
-          <AppHeader />
-
-          <div className="">
-            <div className="flex flex-col items-center h-full w-full mt-4 md:mt-14">
-              <div className="flex flex-col justify-center items-center text-center">
-                <div className="flex space-x-2">
-                  <V2SexyChameleonText className="text-4xl md:text-[52px] font-semibold px-4 pb-2 md:px-0">
-                    Jupiter Terminal
-                  </V2SexyChameleonText>
-
-                  <div className="px-1 py-0.5 bg-v3-primary rounded-md ml-2.5 font-semibold flex text-xs self-start">
-                    v3
-                  </div>
-                </div>
-                <p className="text-[#9D9DA6] max-w-[100%] md:max-w-[60%] text-md mt-4 heading-[24px]">
-                  An open-sourced, lite version of Jupiter that provides end-to-end swap flow by linking it in your
-                  HTML. Check out the visual demo for the various integration modes below.
-                </p>
-              </div>
-
-              <FeatureShowcaseButton />
-            </div>
-
-            <div className="flex justify-center">
-              <div className="max-w-6xl bg-black/25 mt-12 rounded-xl flex flex-col md:flex-row w-full md:p-4 relative">
-                {/* Desktop configurator */}
-                <div className="hidden md:flex">
-                  <FormConfigurator {...watchAllFields} reset={reset} setValue={setValue} formState={formState} />
-                </div>
-
-                <ShouldWrapWalletProvider>
-                  <div className="mt-8 md:mt-0 md:ml-4 h-full w-full bg-black/40 rounded-xl flex flex-col">
-                    {watchAllFields.simulateWalletPassthrough ? (
-                      <div className="absolute right-6 top-8 text-white flex flex-col justify-center text-center">
-                        <div className="text-xs mb-1">Simulate dApp Wallet</div>
-                        <UnifiedWalletButton />
-                      </div>
-                    ) : null}
-
-                    <div className="mt-4 flex justify-center ">
-                      <button
-                        onClick={() => {
-                          setTab('modal');
-                        }}
-                        type="button"
-                        className={classNames(
-                          '!bg-none relative px-4 justify-center',
-                          tab === 'modal' ? '' : 'opacity-20 hover:opacity-70',
-                        )}
-                      >
-                        <div className="flex items-center text-md text-white">
-                          {tab === 'modal' ? <V2SexyChameleonText>Modal</V2SexyChameleonText> : 'Modal'}
-                        </div>
-
-                        {tab === 'modal' ? (
-                          <div className="absolute left-0 bottom-[-8px] w-full h-0.5 bg-gradient-to-r from-v3-primary to-[#00BEF0]" />
-                        ) : (
-                          <div className="absolute left-0 bottom-[-8px] w-full h-[1px] bg-white/50" />
-                        )}
-                      </button>
-
-                      <button
-                        onClick={() => {
-                          setTab('integrated');
-                        }}
-                        type="button"
-                        className={classNames(
-                          '!bg-none relative px-4 justify-center',
-                          tab === 'integrated' ? '' : 'opacity-20 hover:opacity-70',
-                        )}
-                      >
-                        <div className="flex items-center text-md text-white">
-                          {tab === 'integrated' ? <V2SexyChameleonText>Integrated</V2SexyChameleonText> : 'Integrated'}
-                        </div>
-                        {tab === 'integrated' ? (
-                          <div className="absolute left-0 bottom-[-8px] w-full h-0.5 bg-gradient-to-r from-v3-primary to-[#00BEF0]" />
-                        ) : (
-                          <div className="absolute left-0 bottom-[-8px] w-full h-[1px] bg-white/50" />
-                        )}
-                      </button>
-
-                      <button
-                        onClick={() => {
-                          setTab('widget');
-                        }}
-                        type="button"
-                        className={classNames(
-                          '!bg-none relative px-4 justify-center',
-                          tab === 'widget' ? '' : 'opacity-20 hover:opacity-70',
-                        )}
-                      >
-                        <div className="flex items-center text-md text-white">
-                          {tab === 'widget' ? <V2SexyChameleonText>Widget</V2SexyChameleonText> : 'Widget'}
-                        </div>
-
-                        {tab === 'widget' ? (
-                          <div className="absolute left-0 bottom-[-8px] w-full h-0.5 bg-gradient-to-r from-v3-primary to-[#00BEF0]" />
-                        ) : (
-                          <div className="absolute left-0 bottom-[-8px] w-full h-[1px] bg-white/50" />
-                        )}
-                      </button>
-                    </div>
-
-                    <span className="flex justify-center text-center text-xs text-[#9D9DA6] mt-4">
-                      {tab === 'modal' ? 'Jupiter renders as a modal and takes up the whole screen.' : null}
-                      {tab === 'integrated' ? 'Jupiter renders as a part of your dApp.' : null}
-                      {tab === 'widget'
-                        ? 'Jupiter renders as part of a widget that can be placed at different positions on your dApp.'
-                        : null}
-                    </span>
-
-                    <div className="flex flex-grow items-center justify-center text-white/75">
-                      {tab === 'modal' ? (
-                        <ModalTerminal
-                          rpcUrl={rpcUrl}
-                          refetchIntervalForTokenAccounts={watchAllFields.refetchIntervalForTokenAccounts}
-                          formProps={watchAllFields.formProps}
-                          simulateWalletPassthrough={watchAllFields.simulateWalletPassthrough}
-                          strictTokenList={watchAllFields.strictTokenList}
-                          defaultExplorer={watchAllFields.defaultExplorer}
-                          useUserSlippage={watchAllFields.useUserSlippage}
-                        />
-                      ) : null}
-                      {tab === 'integrated' ? (
-                        <IntegratedTerminal
-                          rpcUrl={rpcUrl}
-                          refetchIntervalForTokenAccounts={watchAllFields.refetchIntervalForTokenAccounts}
-                          formProps={watchAllFields.formProps}
-                          simulateWalletPassthrough={watchAllFields.simulateWalletPassthrough}
-                          strictTokenList={watchAllFields.strictTokenList}
-                          defaultExplorer={watchAllFields.defaultExplorer}
-                          useUserSlippage={watchAllFields.useUserSlippage}
-                        />
-                      ) : null}
-                      {tab === 'widget' ? (
-                        <WidgetTerminal
-                          rpcUrl={rpcUrl}
-                          refetchIntervalForTokenAccounts={watchAllFields.refetchIntervalForTokenAccounts}
-                          formProps={watchAllFields.formProps}
-                          simulateWalletPassthrough={watchAllFields.simulateWalletPassthrough}
-                          strictTokenList={watchAllFields.strictTokenList}
-                          defaultExplorer={watchAllFields.defaultExplorer}
-                          useUserSlippage={watchAllFields.useUserSlippage}
-                        />
-                      ) : null}
-                    </div>
-                  </div>
-                </ShouldWrapWalletProvider>
-              </div>
-            </div>
-            {/* Mobile configurator */}
-            <div className="flex md:hidden">
-              <FormConfigurator {...watchAllFields} reset={reset} setValue={setValue} formState={formState} />
-            </div>
-          </div>
-        </div>
-
-        <CodeBlocks formConfigurator={watchAllFields} displayMode={tab} />
-
-        <div className="w-full mt-12">
-          <Footer />
-        </div>
-      </div>
-    </QueryClientProvider>
-  );
+    return content;
 }

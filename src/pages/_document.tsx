@@ -6,12 +6,12 @@ class MyDocument extends Document {
       <Html>
         <Head>
           <meta charSet="utf-8" />
-          <link rel="icon" href="/favicon-96x96.png" />
+          <link rel="icon" href="/favicon.ico" />
           <meta name="theme-color" content="#103145" />
 
           <meta
             name="description"
-            content="Jupiter Terminal: An open-sourced, lite version of Jupiter that provides end-to-end swap flow."
+            content="SWAPFY Terminal: Best Pools, Fast Swaps, Low Fees. Powered by Jupiter Terminal."
           />
 
           <link rel="manifest" href="/manifest.json" crossOrigin="use-credentials" />

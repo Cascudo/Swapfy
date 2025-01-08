@@ -151,46 +151,61 @@ const AccountsProvider: React.FC<AccountsProviderProps> = ({ children, refetchIn
   const fetchNative = useCallback(async () => {
     if (!publicKey || !connected) return null;
 
-    const response = await connection.getAccountInfo(publicKey);
-    if (response) {
-      return {
-        pubkey: publicKey,
-        balance: new Decimal(fromLamports(response?.lamports || 0, 9)).toString(),
-        balanceLamports: new BN(response?.lamports || 0),
-        decimals: 9,
-        isFrozen: false,
-      };
+    try {
+      const response = await connection.getAccountInfo(publicKey);
+      if (response) {
+        return {
+          pubkey: publicKey,
+          balance: new Decimal(fromLamports(response?.lamports || 0, 9)).toString(),
+          balanceLamports: new BN(response?.lamports || 0),
+          decimals: 9,
+          isFrozen: false,
+        };
+      }
+    } catch (error) {
+      console.error('[Accounts] Error fetching native account:', error);
+      return null;
     }
   }, [publicKey, connected, connection]);
 
   const fetchAllTokens = useCallback(async () => {
     if (!publicKey || !connected) return {};
 
-    const [tokenAccounts, token2022Accounts] = await Promise.all(
-      [TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID].map((tokenProgramId) =>
-        connection.getParsedTokenAccountsByOwner(publicKey, { programId: tokenProgramId }, 'confirmed'),
-      ),
-    );
+    try {
+      const [tokenAccounts, token2022Accounts] = await Promise.all(
+        [TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID].map((tokenProgramId) =>
+          connection.getParsedTokenAccountsByOwner(publicKey, { programId: tokenProgramId }, 'confirmed'),
+        ),
+      );
 
-    const reducedResult = [...tokenAccounts.value, ...token2022Accounts.value].reduce(
-      (acc, item: ParsedTokenData) => {
-        // Only allow standard TOKEN_PROGRAM_ID ATA
-        const expectedAta = getAssociatedTokenAddressSync(new PublicKey(item.account.data.parsed.info.mint), publicKey);
-        if (!expectedAta.equals(item.pubkey)) return acc;
+      console.debug('[Accounts] Raw accounts:', {
+        tokenAccounts: tokenAccounts.value.length,
+        token2022Accounts: token2022Accounts.value.length,
+      });
 
-        acc[item.account.data.parsed.info.mint] = {
-          balance: item.account.data.parsed.info.tokenAmount.uiAmountString,
-          balanceLamports: new BN(item.account.data.parsed.info.tokenAmount.amount),
-          pubkey: item.pubkey,
-          decimals: item.account.data.parsed.info.tokenAmount.decimals,
-          isFrozen: item.account.data.parsed.info.state === 2, // 2 is frozen
-        };
-        return acc;
-      },
-      {} as Record<string, IAccountsBalance>,
-    );
+      const reducedResult = [...tokenAccounts.value, ...token2022Accounts.value].reduce(
+        (acc, item: ParsedTokenData) => {
+          // Only allow standard TOKEN_PROGRAM_ID ATA
+          const expectedAta = getAssociatedTokenAddressSync(new PublicKey(item.account.data.parsed.info.mint), publicKey);
+          if (!expectedAta.equals(item.pubkey)) return acc;
 
-    return reducedResult;
+          acc[item.account.data.parsed.info.mint] = {
+            balance: item.account.data.parsed.info.tokenAmount.uiAmountString,
+            balanceLamports: new BN(item.account.data.parsed.info.tokenAmount.amount),
+            pubkey: item.pubkey,
+            decimals: item.account.data.parsed.info.tokenAmount.decimals,
+            isFrozen: item.account.data.parsed.info.state === 2, // 2 is frozen
+          };
+          return acc;
+        },
+        {} as Record<string, IAccountsBalance>,
+      );
+
+      return reducedResult;
+    } catch (error) {
+      console.error('[Accounts] Error fetching token accounts:', error);
+      return {};
+    }
   }, [publicKey, connected, connection]);
 
   const { data, isLoading, refetch } = useQuery<{
@@ -202,15 +217,23 @@ const AccountsProvider: React.FC<AccountsProviderProps> = ({ children, refetchIn
       // Fetch all tokens balance
       const [nativeAccount, accounts] = await Promise.all([fetchNative(), fetchAllTokens()]);
 
+      // Add debug logging
+      console.debug('[Accounts] Fetched balances:', {
+        nativeAccount,
+        tokenAccounts: Object.keys(accounts).length,
+      });
+
       return {
         nativeAccount,
         accounts,
       };
     },
     {
-      enabled: Boolean(publicKey?.toString() && connected && getTerminalInView()),
+      enabled: Boolean(publicKey?.toString() && connected), // Removed getTerminalInView dependency
       refetchInterval: refetchIntervalForTokenAccounts,
-      refetchIntervalInBackground: false,
+      refetchIntervalInBackground: true, // Enabled background refresh
+      staleTime: 10_000, // Added stale time of 10 seconds
+      retry: 2, // Added retry attempts
     },
   );
 

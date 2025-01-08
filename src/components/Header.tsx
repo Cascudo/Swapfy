@@ -3,9 +3,9 @@ import { useSwapContext } from 'src/contexts/SwapContext';
 import RefreshSVG from 'src/icons/RefreshSVG';
 import SettingsSVG from 'src/icons/SettingsSVG';
 import { formatNumber } from 'src/misc/utils';
-
+import V2SexyChameleonText from 'src/components/SexyChameleonText/V2SexyChameleonText';
 import JupiterLogo from '../icons/JupiterLogo';
-
+import Link from 'next/link';
 import { WalletButton } from './WalletComponents';
 import SwapSettingsModal from './SwapSettingsModal/SwapSettingsModal';
 import { useAccounts } from 'src/contexts/accounts';
@@ -35,12 +35,21 @@ const Header: React.FC<{ setIsWalletModalOpen(toggle: boolean): void }> = ({ set
 
   return (
     <div className="mt-2 h-7 pl-3 pr-2">
-      <div className="w-full flex items-center justify-between ">
-        <a href={jupiterDirectLink} target={'_blank'} rel="noreferrer noopener" className="flex items-center space-x-2">
-          <JupiterLogo width={24} height={24} />
-          <span className="font-bold text-sm text-white">Jupiter</span>
-        </a>
-
+        <div className="w-full flex items-center justify-between">
+            <Link 
+                href="/" 
+                target="_blank"
+                rel="noreferrer noopener" 
+                className="flex items-center space-x-2"
+            >
+                <JupiterLogo width={24} height={24} />
+                <span className="font-bold text-sm text-white">
+                    <V2SexyChameleonText className="text-1xl md:text-[16px] font-semibold px-4 pb-2 md:px-0">
+                        SWAPFY
+                    </V2SexyChameleonText>
+                     </span>
+            </Link>
+              
         <div className="flex space-x-1 items-center">
           <button
             type="button"

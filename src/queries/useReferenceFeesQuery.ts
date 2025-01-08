@@ -28,20 +28,25 @@ interface MarketReferenceFee {
 }
 
 export const useReferenceFeesQuery = () => {
+  // Safely determine prefix to avoid errors on server side
+  const localStoragePrefix = (typeof window !== 'undefined' && window.Jupiter && window.Jupiter.localStoragePrefix)
+    ? window.Jupiter.localStoragePrefix
+    : 'default-prefix';
+
   const [local, setLocal] = useLocalStorage<{ timestamp: number | null; data: MarketReferenceFee | undefined }>(
-    `${window.Jupiter.localStoragePrefix}-market-reference-fees-cached`,
+    `${localStoragePrefix}-market-reference-fees-cached`,
     { timestamp: null, data: undefined },
   );
 
   return useQuery(
     ['market-reference-fees-cached'],
     async () => {
-      // 1 minutes caching
+      // 1 minute caching
       if (local.data && local.timestamp && Date.now() - local.timestamp < 60_000) {
         return local.data;
       }
 
-      const data = (await (await fetch('https://cache.jup.ag/reference-fees')).json()) as unknown as MarketReferenceFee;
+      const data = (await (await fetch('https://cache.jup.ag/reference-fees')).json()) as MarketReferenceFee;
       setLocal({ timestamp: Date.now(), data });
       return data;
     },

@@ -7,10 +7,13 @@ export const USDT_MINT = new PublicKey('Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8Ben
 export const JLP_MINT = new PublicKey('27G8MtK7VtTcCHkpASjSDdkWWYfoqT6ggEuKidVJidD4');
 
 export const JUPITER_DEFAULT_RPC =
-  process.env.NEXT_PUBLIC_JUPITER_DEFAULT_RPC ||
-  'https://neat-hidden-sanctuary.solana-mainnet.discover.quiknode.pro/2af5315d336f9ae920028bbb90a73b724dc1bbed';
-export const DEFAULT_SLIPPAGE_PCT = 0.5;
-export const DEFAULT_MAX_DYNAMIC_SLIPPAGE_PCT = 3.0;
+    process.env.NEXT_PUBLIC_JUPITER_DEFAULT_RPC ||
+    'https://solana-api.instantnodes.io/token-4flHeRYUbETwYFAzE7CWm2QzIMvrtYrc' ||
+    'https://mainnet.helius-rpc.com/?api-key=37c18781-79e1-4b67-9fe6-2f130b9bca40' ||
+    'https://neat-hidden-sanctuary.solana-mainnet.discover.quiknode.pro/2af5315d336f9ae920028bbb90a73b724dc1bbed';
+
+export const DEFAULT_SLIPPAGE_PCT = 1.5;
+export const DEFAULT_MAX_DYNAMIC_SLIPPAGE_PCT = 4.0;
 
 export const WRAPPED_SOL_MINT = new PublicKey('So11111111111111111111111111111111111111112');
 export const SOL_MINT_TOKEN_INFO = {
@@ -41,7 +44,7 @@ export interface IFormConfigurator {
 
 export const INITIAL_FORM_CONFIG: IFormConfigurator = Object.freeze({
   simulateWalletPassthrough: false,
-  strictTokenList: true,
+  strictTokenList: false,
   defaultExplorer: 'Solana Explorer',
   formProps: {
     fixedInputMint: false,

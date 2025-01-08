@@ -40,6 +40,10 @@ export interface FormProps {
   fixedOutputMint?: boolean;
   /** Initial slippage to swap */
   initialSlippageBps?: number;
+  /** Initial from value for the swap input */
+  initialFromValue?: string;
+  /** Initial to value for the swap output */
+  initialToValue?: string;
 }
 
 /** Built in support for these explorers */

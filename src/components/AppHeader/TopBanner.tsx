@@ -41,12 +41,8 @@ const TopBanner = () => {
             typeof closeCount !== 'undefined' ? `h-16 md:h-[34px]` : 'h-[0]',
           )}
         >
-          <span>{`V3 offers full tokens selection, better routing, and more. V2 will be deprecated soon.`}</span>
-          <button onClick={openFeatureShowcase} type="button" className="flex justify-center space-x-1 underline">
-            {`Check out what's new in v3`}
-          </button>
-
-          <div className="cursor-pointer absolute right-4 top-2.5" onClick={handleClose}>
+          <span>{`V1 offers full tokens selection, lightning fast transactions, optimized routing and more.`}</span>
+                   <div className="cursor-pointer absolute right-4 top-2.5" onClick={handleClose}>
             <CloseIcon width={12} height={12} />
           </div>
         </div>

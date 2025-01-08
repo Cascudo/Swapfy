@@ -286,7 +286,7 @@ const SwapSettingsModal: React.FC<{ closeModal: () => void }> = ({ closeModal })
             </div>
 
             <p className="text-xs text-white/50 font-[500] mt-2">
-              These fees apply across Jupiter’s entire product suite, such as Swap, Perps, DCA, Limit Order
+              These fees apply across SWAPFY’s entire product suite, such as Swap, (Roadmap: Perps, DCA, Limit Order)
             </p>
 
             <div className="flex flex-col mt-2">
@@ -690,13 +690,13 @@ const SwapSettingsModal: React.FC<{ closeModal: () => void }> = ({ closeModal })
             ) : null}
 
             <Separator />
-
-            <div className="flex items-center justify-between mt-2">
+                     
+             <div className="flex items-center justify-between mt-2">
               <div className="flex items-center space-x-2">
-                <p className="text-sm font-semibold">Strict Token list</p>
+                <p className="text-sm font-semibold">Full Token list</p>
 
                 <a
-                  href="https://docs.jup.ag/docs/token-list/token-list-api"
+                  href="##"
                   rel="noreferrer"
                   target={'_blank'}
                   className="cursor-pointer"
@@ -706,10 +706,10 @@ const SwapSettingsModal: React.FC<{ closeModal: () => void }> = ({ closeModal })
               </div>
             </div>
             <p className="mt-2 text-xs text-white/50">
-              {`The strict list contains a smaller set of validated tokens. To see all tokens, toggle "off".`}
+              {'Recently bonded Tokens may take 10-15 minutes before becoming available'}
             </p>
           </div>
-
+      
           <div className="px-5 pb-5">
             <JupButton type="submit" className={'w-full mt-4'} disabled={isButtonDisabled} size={'lg'}>
               <span>Save Settings</span>

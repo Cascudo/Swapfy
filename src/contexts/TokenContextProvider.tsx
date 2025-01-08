@@ -43,10 +43,14 @@ export function TokenContextProvider({ formProps, children }: IInit & { children
   const onChainTokenMap = useRef<Map<string, TokenInfo>>(new Map());
 
   // Make sure initialTokenList are only fetched once
-  const [localTokenList, setLocalTokenList] = useLocalStorage<{ timestamp: number | null; data: TokenInfo[] }>(
-    `${window.Jupiter.localStoragePrefix}-local-token-list`,
-    { timestamp: null, data: [] },
-  );
+  const localStorageKey = typeof window !== 'undefined' && window.Jupiter 
+  ? `${window.Jupiter.localStoragePrefix}-local-token-list` 
+  : 'local-token-list';
+
+const [localTokenList, setLocalTokenList] = useLocalStorage<{ timestamp: number | null; data: TokenInfo[] }>(
+  localStorageKey,
+  { timestamp: null, data: [] },
+);
   const { data: initialTokenList } = useQuery(
     ['cached-initial-token-list'],
     async () => {
