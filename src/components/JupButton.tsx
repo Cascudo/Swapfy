@@ -6,7 +6,6 @@ interface IJupButton {
   disabled?: boolean;
   children: ReactNode;
   className?: string;
-  // JupButton border gradient, globals.css
   highlighted?: boolean;
   size?: 'sm' | 'md' | 'lg';
   type?: ButtonHTMLAttributes<HTMLButtonElement>['type'];
@@ -21,13 +20,13 @@ const JupButton = React.forwardRef(
   ) => {
     const contentClass = (() => {
       if (size === 'sm') {
-        return 'px-4 py-2.5 text-xs';
+        return 'px-4 py-2.5 text-xs !font-[Inter] !font-normal !text-opacity-100';
       }
       if (size === 'md') {
-        return 'px-4 py-3 text-sm font-semibold';
+        return 'px-4 py-3 text-sm !font-[Inter] font-semibold !text-opacity-100';
       }
       if (size === 'lg') {
-        return 'p-5 text-md font-semibold';
+        return 'p-5 text-md !font-[Inter] font-semibold !text-opacity-100';
       }
     })();
     const background = bgClass || 'text-white bg-[#191B1F] dark:bg-black/50';
@@ -36,7 +35,7 @@ const JupButton = React.forwardRef(
         type={type}
         ref={ref}
         className={classNames({
-          relative: true,
+          'relative text-current [text-rendering:optimizeLegibility] [-webkit-font-smoothing:antialiased] [-moz-osx-font-smoothing:grayscale]': true,
           'jup-gradient': highlighted,
           'opacity-50 cursor-not-allowed': disabled,
           [background]: true,
@@ -46,7 +45,7 @@ const JupButton = React.forwardRef(
         disabled={disabled}
         onClick={onClick}
       >
-        <div className={`${contentClass} h-full w-full leading-none`}>{children}</div>
+        <div className={`${contentClass} h-full w-full leading-none !text-inherit`}>{children}</div>
       </button>
     );
   },
