@@ -41,7 +41,7 @@ const TopBanner = () => {
             typeof closeCount !== 'undefined' ? `h-16 md:h-[34px]` : 'h-[0]',
           )}
         >
-          <span>{`V1 offers full tokens selection, lightning fast transactions, optimized routing and more.`}</span>
+          <span>{`V1.01 offers full tokens selection, lightning fast transactions, optimized routing and more.`}</span>
                    <div className="cursor-pointer absolute right-4 top-2.5" onClick={handleClose}>
             <CloseIcon width={12} height={12} />
           </div>
