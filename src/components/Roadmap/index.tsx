@@ -15,7 +15,7 @@ const Roadmap = () => {
             features: [
                 "Soft launch of the platform - DONE",
                 "Fair Launch Platform Token - DONE CA: 6vW6kVZ5hGu9id9bdBd3dpJ7JkYbmWMBHmgXaPepump",
-                "Lock Dev Wallet 2.5 Dears - DONE - https://tools.smithii.io/token-vesting-certificate/SWAPFY-LOCKED",
+                "Lock Dev Wallet 2.5 Years - DONE - https://tools.smithii.io/token-vesting-certificate/SWAPFY-LOCKED",
                 "Start Community Rewards - Ongoing"
             ],
             status: 'in-progress'
