@@ -66,7 +66,7 @@ export const USDValueProvider: FC<PropsWithChildren<IInit>> = ({ children }) => 
       const timeoutId = setTimeout(() => controller.abort(), 5000); // 5s timeout
 
       const response = await fetch(
-        `https://price.jup.ag/v4/price?ids=${addresses.join(',')}`,
+        `https://api.jup.ag/price/v2?ids=${addresses.join(',')}`,
         {
           method: 'GET',
           headers: {
