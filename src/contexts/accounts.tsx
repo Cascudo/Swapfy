@@ -1,16 +1,17 @@
 import { useConnection } from '@jup-ag/wallet-adapter';
 import { AccountLayout, TOKEN_PROGRAM_ID, AccountInfo as TokenAccountInfo, u64 } from '@solana/spl-token';
 import { AccountInfo, PublicKey } from '@solana/web3.js';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import BN from 'bn.js';
-import React, { PropsWithChildren, useCallback, useContext } from 'react';
+import React, { PropsWithChildren, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { WRAPPED_SOL_MINT } from 'src/constants';
 import { fromLamports, getAssociatedTokenAddressSync } from 'src/misc/utils';
 import { useWalletPassThrough } from './WalletPassthroughProvider';
 import Decimal from 'decimal.js';
-import { getTerminalInView } from 'src/stores/jotai-terminal-in-view';
 
 const TOKEN_2022_PROGRAM_ID = new PublicKey('TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb');
+const ACCOUNT_QUERY_KEY = 'accounts';
+const SOL_QUERY_KEY = 'solBalance';
 
 export interface IAccountsBalance {
   pubkey: PublicKey;
@@ -24,7 +25,8 @@ interface IAccountContext {
   accounts: Record<string, IAccountsBalance>;
   nativeAccount: IAccountsBalance | null | undefined;
   loading: boolean;
-  refresh: () => void;
+  refresh: () => Promise<void>;
+  lastSuccessfulFetch?: number;
 }
 
 interface ParsedTokenData {
@@ -32,26 +34,18 @@ interface ParsedTokenData {
     data: {
       parsed: {
         info: {
-          isNative: boolean;
           mint: string;
           owner: string;
-          state: number;
           tokenAmount: {
             amount: string;
             decimals: number;
             uiAmount: number;
             uiAmountString: string;
           };
+          state: number;
         };
-        type: string;
       };
-      program: string;
-      space: number;
     };
-    executable: boolean;
-    lamports: number;
-    owner: PublicKey;
-    rentEpoch?: number;
   };
   pubkey: PublicKey;
 }
@@ -60,199 +54,188 @@ const AccountContext = React.createContext<IAccountContext>({
   accounts: {},
   nativeAccount: undefined,
   loading: true,
-  refresh: () => {},
+  refresh: async () => {},
 });
-
-export interface TokenAccount {
-  pubkey: PublicKey;
-  account: AccountInfo<Buffer>;
-  info: TokenAccountInfo;
-}
-
-export function wrapNativeAccount(pubkey: PublicKey, account: AccountInfo<Buffer>): TokenAccount | undefined {
-  if (!account) {
-    return undefined;
-  }
-
-  return {
-    pubkey: pubkey,
-    account,
-    info: {
-      address: pubkey,
-      mint: WRAPPED_SOL_MINT,
-      owner: pubkey,
-      amount: new u64(account.lamports.toString()),
-      delegate: null,
-      delegatedAmount: new u64(0),
-      isInitialized: true,
-      isFrozen: false,
-      isNative: true,
-      rentExemptReserve: null,
-      closeAuthority: null,
-    },
-  };
-}
-
-const deserializeAccount = (data: Buffer) => {
-  if (data == undefined || data.length == 0) {
-    return undefined;
-  }
-  const accountInfo = AccountLayout.decode(data);
-  accountInfo.mint = new PublicKey(accountInfo.mint);
-  accountInfo.owner = new PublicKey(accountInfo.owner);
-  accountInfo.amount = u64.fromBuffer(accountInfo.amount);
-  if (accountInfo.delegateOption === 0) {
-    accountInfo.delegate = null;
-    accountInfo.delegatedAmount = new u64(0);
-  } else {
-    accountInfo.delegate = new PublicKey(accountInfo.delegate);
-    accountInfo.delegatedAmount = u64.fromBuffer(accountInfo.delegatedAmount);
-  }
-  accountInfo.isInitialized = accountInfo.state !== 0;
-  accountInfo.isFrozen = accountInfo.state === 2;
-  if (accountInfo.isNativeOption === 1) {
-    accountInfo.rentExemptReserve = u64.fromBuffer(accountInfo.isNative);
-    accountInfo.isNative = true;
-  } else {
-    accountInfo.rentExemptReserve = null;
-    accountInfo.isNative = false;
-  }
-  if (accountInfo.closeAuthorityOption === 0) {
-    accountInfo.closeAuthority = null;
-  } else {
-    accountInfo.closeAuthority = new PublicKey(accountInfo.closeAuthority);
-  }
-  return accountInfo;
-};
-
-export const TokenAccountParser = (
-  pubkey: PublicKey,
-  info: AccountInfo<Buffer>,
-  programId: PublicKey,
-): TokenAccount | undefined => {
-  const tokenAccountInfo = deserializeAccount(info.data);
-
-  if (!tokenAccountInfo) return;
-  return {
-    pubkey,
-    account: info,
-    info: tokenAccountInfo,
-  };
-};
 
 type AccountsProviderProps = PropsWithChildren<{
   refetchIntervalForTokenAccounts?: number;
 }>;
 
-const AccountsProvider: React.FC<AccountsProviderProps> = ({ children, refetchIntervalForTokenAccounts = 10_000 }) => {
+const AccountsProvider: React.FC<AccountsProviderProps> = ({
+  children,
+  refetchIntervalForTokenAccounts = 10_000,
+}) => {
   const { publicKey, connected } = useWalletPassThrough();
   const { connection } = useConnection();
+  const queryClient = useQueryClient();
+  const lastSuccessfulFetchRef = useRef<number>();
+  const connectionErrorCount = useRef(0);
+  const [isSolFetched, setIsSolFetched] = useState(false);
 
+  // Fetch SOL balance first - it's fastest
   const fetchNative = useCallback(async () => {
     if (!publicKey || !connected) return null;
 
     try {
-      const response = await connection.getAccountInfo(publicKey);
-      if (response) {
-        return {
-          pubkey: publicKey,
-          balance: new Decimal(fromLamports(response?.lamports || 0, 9)).toString(),
-          balanceLamports: new BN(response?.lamports || 0),
-          decimals: 9,
-          isFrozen: false,
-        };
-      }
+      const response = await connection.getAccountInfo(publicKey, 'confirmed');
+      if (!response) return null;
+
+      const nativeAccount = {
+        pubkey: publicKey,
+        balance: new Decimal(fromLamports(response?.lamports || 0, 9)).toString(),
+        balanceLamports: new BN(response?.lamports || 0),
+        decimals: 9,
+        isFrozen: false,
+      };
+
+      setIsSolFetched(true);
+      return nativeAccount;
     } catch (error) {
       console.error('[Accounts] Error fetching native account:', error);
       return null;
     }
   }, [publicKey, connected, connection]);
 
+  // Helper to process token accounts
+  const processTokenAccounts = (accounts: ParsedTokenData[]) => {
+    return accounts.reduce((acc, item) => {
+      const tokenAmount = item.account.data.parsed.info.tokenAmount;
+      // Only include tokens with non-zero balance
+      if (new BN(tokenAmount.amount).gt(new BN(0))) {
+        acc[item.account.data.parsed.info.mint] = {
+          balance: tokenAmount.uiAmountString,
+          balanceLamports: new BN(tokenAmount.amount),
+          pubkey: item.pubkey,
+          decimals: tokenAmount.decimals,
+          isFrozen: item.account.data.parsed.info.state === 2,
+        };
+      }
+      return acc;
+    }, {} as Record<string, IAccountsBalance>);
+  };
+
+  // Fetch token accounts progressively
   const fetchAllTokens = useCallback(async () => {
     if (!publicKey || !connected) return {};
 
     try {
-      const [tokenAccounts, token2022Accounts] = await Promise.all(
-        [TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID].map((tokenProgramId) =>
-          connection.getParsedTokenAccountsByOwner(publicKey, { programId: tokenProgramId }, 'confirmed'),
-        ),
+      // Fetch standard token accounts first
+      const tokenAccounts = await connection.getParsedTokenAccountsByOwner(
+        publicKey,
+        { programId: TOKEN_PROGRAM_ID },
+        'confirmed'
       );
 
-      console.debug('[Accounts] Raw accounts:', {
-        tokenAccounts: tokenAccounts.value.length,
-        token2022Accounts: token2022Accounts.value.length,
-      });
-
-      const reducedResult = [...tokenAccounts.value, ...token2022Accounts.value].reduce(
-        (acc, item: ParsedTokenData) => {
-          // Only allow standard TOKEN_PROGRAM_ID ATA
-          const expectedAta = getAssociatedTokenAddressSync(new PublicKey(item.account.data.parsed.info.mint), publicKey);
-          if (!expectedAta.equals(item.pubkey)) return acc;
-
-          acc[item.account.data.parsed.info.mint] = {
-            balance: item.account.data.parsed.info.tokenAmount.uiAmountString,
-            balanceLamports: new BN(item.account.data.parsed.info.tokenAmount.amount),
-            pubkey: item.pubkey,
-            decimals: item.account.data.parsed.info.tokenAmount.decimals,
-            isFrozen: item.account.data.parsed.info.state === 2, // 2 is frozen
-          };
-          return acc;
-        },
-        {} as Record<string, IAccountsBalance>,
+      let accounts = processTokenAccounts(tokenAccounts.value);
+      
+      // Update with initial token accounts
+      queryClient.setQueryData(
+        [ACCOUNT_QUERY_KEY, publicKey.toString()],
+        (old: any) => ({
+          ...old,
+          accounts: { ...accounts },
+        })
       );
 
-      return reducedResult;
+      // Then fetch Token-2022 accounts
+      try {
+        const token2022Accounts = await connection.getParsedTokenAccountsByOwner(
+          publicKey,
+          { programId: TOKEN_2022_PROGRAM_ID },
+          'confirmed'
+        );
+
+        const token2022ProcessedAccounts = processTokenAccounts(token2022Accounts.value);
+        accounts = { ...accounts, ...token2022ProcessedAccounts };
+      } catch (error) {
+        console.warn('[Accounts] Error fetching Token-2022 accounts:', error);
+      }
+
+      if (Object.keys(accounts).length > 0) {
+        lastSuccessfulFetchRef.current = Date.now();
+      }
+
+      return accounts;
     } catch (error) {
       console.error('[Accounts] Error fetching token accounts:', error);
+      
+      // If we have recent successful data, return cached data
+      const cachedData = queryClient.getQueryData([ACCOUNT_QUERY_KEY, publicKey.toString()]);
+      if (cachedData && lastSuccessfulFetchRef.current && Date.now() - lastSuccessfulFetchRef.current < 30000) {
+        return (cachedData as any).accounts || {};
+      }
       return {};
     }
-  }, [publicKey, connected, connection]);
+  }, [publicKey, connected, connection, queryClient]);
 
-  const { data, isLoading, refetch } = useQuery<{
-    nativeAccount: IAccountsBalance | null | undefined;
-    accounts: Record<string, IAccountsBalance>;
-  }>(
-    ['accounts', publicKey?.toString()],
-    async () => {
-      // Fetch all tokens balance
-      const [nativeAccount, accounts] = await Promise.all([fetchNative(), fetchAllTokens()]);
-
-      // Add debug logging
-      console.debug('[Accounts] Fetched balances:', {
-        nativeAccount,
-        tokenAccounts: Object.keys(accounts).length,
-      });
-
-      return {
-        nativeAccount,
-        accounts,
-      };
-    },
+  // Separate query for SOL balance
+  const { data: nativeAccount } = useQuery(
+    [SOL_QUERY_KEY, publicKey?.toString()],
+    fetchNative,
     {
-      enabled: Boolean(publicKey?.toString() && connected), // Removed getTerminalInView dependency
+      enabled: Boolean(publicKey?.toString() && connected),
       refetchInterval: refetchIntervalForTokenAccounts,
-      refetchIntervalInBackground: true, // Enabled background refresh
-      staleTime: 10_000, // Added stale time of 10 seconds
-      retry: 2, // Added retry attempts
-    },
+      staleTime: 5000,
+      cacheTime: 30000,
+    }
   );
 
+  // Main query for token accounts
+  const { data: tokenAccounts, isLoading, refetch } = useQuery(
+    [ACCOUNT_QUERY_KEY, publicKey?.toString()],
+    fetchAllTokens,
+    {
+      enabled: Boolean(publicKey?.toString() && connected && isSolFetched),
+      refetchInterval: refetchIntervalForTokenAccounts,
+      refetchIntervalInBackground: false,
+      refetchOnWindowFocus: true,
+      refetchOnReconnect: true,
+      staleTime: 5000,
+      cacheTime: 30000,
+      retry: 3,
+      retryDelay: (attemptIndex) => Math.min(1000 * Math.pow(2, attemptIndex), 10000),
+      onError: (error) => {
+        console.error('[Accounts] Query error:', error);
+      },
+    }
+  );
+
+  // Reset error count when wallet changes
+  useEffect(() => {
+    connectionErrorCount.current = 0;
+    setIsSolFetched(false);
+  }, [publicKey, connected]);
+
+  const refresh = useCallback(async () => {
+    try {
+      await Promise.all([
+        queryClient.invalidateQueries([SOL_QUERY_KEY, publicKey?.toString()]),
+        queryClient.invalidateQueries([ACCOUNT_QUERY_KEY, publicKey?.toString()]),
+      ]);
+    } catch (error) {
+      console.error('[Accounts] Refresh error:', error);
+    }
+  }, [queryClient, publicKey]);
+
+  const contextValue = {
+    accounts: tokenAccounts || {},
+    nativeAccount,
+    loading: isLoading && !nativeAccount,
+    refresh,
+    lastSuccessfulFetch: lastSuccessfulFetchRef.current,
+  };
+
   return (
-    <AccountContext.Provider
-      value={{
-        accounts: data?.accounts || {},
-        nativeAccount: data?.nativeAccount,
-        loading: isLoading,
-        refresh: refetch,
-      }}
-    >
+    <AccountContext.Provider value={contextValue}>
       {children}
     </AccountContext.Provider>
   );
 };
 
 const useAccounts = () => {
-  return useContext(AccountContext);
+  const context = useContext(AccountContext);
+  if (!context) throw new Error('useAccounts must be used within AccountsProvider');
+  return context;
 };
 
 export { AccountsProvider, useAccounts };

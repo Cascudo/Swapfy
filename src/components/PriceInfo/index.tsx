@@ -58,7 +58,12 @@ const Index = ({
   const [feeInformation, setFeeInformation] = useState<TransactionFeeInfo>();
 
   const mintToAccountMap = useMemo(() => {
-    return new Map(Object.entries(accounts).map((acc) => [acc[0], acc[1].pubkey.toString()]));
+    return new Map(
+      Object.entries(accounts).map(([mint, account]) => [
+        mint,
+        account?.pubkey?.toString() || '',
+      ])
+    );
   }, [accounts]);
 
   useEffect(() => {

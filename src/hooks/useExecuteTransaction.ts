@@ -1,4 +1,3 @@
-import { useCallback } from 'react';
 import { getSignature, IDL_V6, JUPITER_PROGRAM_V6_ID } from '@jup-ag/common';
 import { useConnection } from '@jup-ag/wallet-adapter';
 import { handleSendTransaction, TransactionError } from '@mercurial-finance/optimist';
@@ -10,6 +9,7 @@ import {
   VersionedTransaction,
   VersionedTransactionResponse,
 } from '@solana/web3.js';
+import { useCallback } from 'react';
 import { useWalletPassThrough } from 'src/contexts/WalletPassthroughProvider';
 
 interface TransactionOptions {
@@ -28,17 +28,57 @@ type IExecuteTransactionResult =
   | { success: false; txid?: string; error?: TransactionError }
   | { success: false; status: 'unknown'; txid: string };
 
-// ------------------------------------
-// New typed result for verification
-// ------------------------------------
-type VerificationResult =
-  | { success: true; transaction: VersionedTransactionResponse }
-  | { success: false; error: any };
-
 export const useExecuteTransaction = () => {
   const { connection } = useConnection();
   const wallet = useWalletPassThrough();
 
+  // -------------------------------------------------------------------------
+  // Wrap getLatestBlockhash in a useCallback to ensure it uses the latest 'connection'
+  // -------------------------------------------------------------------------
+  const getLatestBlockhash = useCallback(async () => {
+    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
+    return { blockhash, lastValidBlockHeight };
+  }, [connection]);
+
+  // -------------------------------------------------------------------------
+  // Wrap verifyTransactionStatus in a useCallback for the same reason
+  // -------------------------------------------------------------------------
+  const verifyTransactionStatus = useCallback(
+    async (signature: string) => {
+      try {
+        // Try multiple times with increasing delays
+        for (let i = 0; i < 5; i++) {
+          // 1s, 2s, 3s, 4s, 5s delays
+          await new Promise((resolve) => setTimeout(resolve, 1000 * (i + 1)));
+          const confirmedTx = await connection.getTransaction(signature, {
+            maxSupportedTransactionVersion: 0,
+          });
+
+          if (confirmedTx) {
+            if (!confirmedTx.meta?.err) {
+              return {
+                success: true,
+                transaction: confirmedTx,
+              };
+            } else {
+              return {
+                success: false,
+                error: confirmedTx.meta.err,
+              };
+            }
+          }
+        }
+        return { success: false, error: 'Transaction not found' };
+      } catch (error) {
+        return { success: false, error };
+      }
+    },
+    [connection]
+  );
+
+  // -------------------------------------------------------------------------
+  // Main executeTransaction callback
+  // -------------------------------------------------------------------------
   const executeTransaction = useCallback(
     async (
       tx: Transaction | VersionedTransaction,
@@ -50,67 +90,27 @@ export const useExecuteTransaction = () => {
         onSuccess: (txid: string, transactionResponse: VersionedTransactionResponse) => void;
       }
     ): Promise<IExecuteTransactionResult> => {
-      // -----------------------------------------------
-      // Move getLatestBlockhash inside the callback
-      // -----------------------------------------------
-      const getLatestBlockhash = async () => {
-        const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash(
-          'confirmed'
-        );
-        return { blockhash, lastValidBlockHeight };
-      };
-
       if (!wallet.publicKey || !wallet.signTransaction || !wallet.signAllTransactions) {
         throw new Error('Wallet not connected');
       }
-      const signTransaction = wallet.signTransaction;
 
       let txid = '';
       let hasBeenSigned = false;
       let retryCount = 0;
       const MAX_RETRIES = 3;
 
-      // ------------------------------------------------------
-      // Updated verifyTransactionStatus with typed return
-      // ------------------------------------------------------
-      const verifyTransactionStatus = async (signature: string): Promise<VerificationResult> => {
-        try {
-          for (let i = 0; i < 5; i++) {
-            await new Promise((resolve) => setTimeout(resolve, 1000 * (i + 1)));
-            const confirmedTx = await connection.getTransaction(signature, {
-              maxSupportedTransactionVersion: 0,
-            });
-            if (confirmedTx) {
-              if (!confirmedTx.meta?.err) {
-                return {
-                  success: true,
-                  transaction: confirmedTx as VersionedTransactionResponse,
-                };
-              }
-              return {
-                success: false,
-                error: confirmedTx.meta.err,
-              };
-            }
-          }
-          return { success: false, error: 'Transaction not found' };
-        } catch (error) {
-          return { success: false, error };
-        }
-      };
-
-      // ---------------------------------------------------------------------
-      // attemptTransaction: Retries, timeouts, re-fetching blockhash if needed
-      // ---------------------------------------------------------------------
+      // -----------------------------------------------------------------------
+      // attemptTransaction: retriable block, re-fetch blockhash, handle timeouts
+      // -----------------------------------------------------------------------
       const attemptTransaction = async (): Promise<IExecuteTransactionResult> => {
         try {
-          // Get fresh blockhash if this is a retry
+          // Re-fetch blockhash if this is a retry
           if (retryCount > 0) {
             const { blockhash, lastValidBlockHeight } = await getLatestBlockhash();
             options.blockhash = blockhash;
             options.lastValidBlockHeight = lastValidBlockHeight;
 
-            // For legacy Transaction, set recentBlockhash directly
+            // For a legacy Transaction, set recentBlockhash
             if (tx instanceof Transaction) {
               tx.recentBlockhash = blockhash;
             }
@@ -127,25 +127,32 @@ export const useExecuteTransaction = () => {
             callback.onPending();
 
             if (tx instanceof Transaction) {
+              // Ensure fee payer is set
               if (!tx.feePayer && wallet.publicKey) {
                 tx.feePayer = wallet.publicKey;
-              } else if (!tx.feePayer) {
-                throw new Error('Wallet public key required for Transaction');
               }
+
               console.log('Transaction instructions:', {
                 count: tx.instructions.length,
                 programIds: tx.instructions.map((ix) => ix.programId.toString()),
               });
             }
 
-            const signedTx = await signTransaction(tx);
+            // Check if wallet.signTransaction exists
+              if (!wallet.signTransaction) {
+                throw new Error('Wallet does not support signTransaction');
+              }
+
+            // Sign the transaction
+            const signedTx = await wallet.signTransaction(tx);
             txid = getSignature(signedTx);
             hasBeenSigned = true;
 
             callback.onSending(txid);
+
             console.log('Transaction signed, sending...', { txid });
 
-            // Set up a 30-second timeout for the transaction send
+            // Set up a 30s timeout for sending the transaction
             const timeoutPromise = new Promise((_, reject) =>
               setTimeout(() => reject(new Error('Transaction timeout')), 30000)
             );
@@ -208,35 +215,32 @@ export const useExecuteTransaction = () => {
             txid,
           });
 
-          // Check for "expired" or "not confirmed" errors
-          if (
-            error?.message?.includes('expired') ||
-            error?.message?.includes('not confirmed')
-          ) {
+          // Check for "expired" or "not confirmed" error
+          if (error?.message?.includes('expired') || error?.message?.includes('not confirmed')) {
             console.log('Transaction reported as expired/not confirmed, verifying status...', {
               txid,
             });
             const verificationResult = await verifyTransactionStatus(txid);
 
-            // Updated type check here
             if (verificationResult.success && verificationResult.transaction) {
               console.log('Transaction actually succeeded:', { txid });
-              callback.onSuccess(txid, verificationResult.transaction);
+              callback.onSuccess(txid, verificationResult.transaction as VersionedTransactionResponse);
               return {
                 success: true,
                 txid,
-                transactionResponse: verificationResult.transaction,
+                transactionResponse: verificationResult.transaction as VersionedTransactionResponse,
               };
             }
-            // If verification says it's not confirmed, proceed to retry logic
+            // If verification says it's not confirmed, we see if we can retry
           }
 
-          // Decide if we should retry
+          // Check if we should retry
           if (
             retryCount < MAX_RETRIES &&
             (error?.message?.includes('expired') || error?.message?.includes('timeout'))
           ) {
             retryCount++;
+            // Exponential-ish backoff
             await new Promise((resolve) => setTimeout(resolve, 1000 * retryCount));
             return attemptTransaction();
           }
@@ -245,9 +249,9 @@ export const useExecuteTransaction = () => {
         }
       };
 
-      // ---------------------------------------------------------------------
+      // -----------------------------------------------------------------------
       // Main try/catch around attemptTransaction
-      // ---------------------------------------------------------------------
+      // -----------------------------------------------------------------------
       try {
         return await attemptTransaction();
       } catch (error: any) {
@@ -263,6 +267,8 @@ export const useExecuteTransaction = () => {
             const confirmedTx = await connection.getTransaction(txid, {
               maxSupportedTransactionVersion: 0,
             });
+
+            // If confirmed with no error, call onSuccess anyway
             if (confirmedTx && !confirmedTx.meta?.err) {
               callback.onSuccess(txid, confirmedTx as VersionedTransactionResponse);
               return {
@@ -284,7 +290,12 @@ export const useExecuteTransaction = () => {
         };
       }
     },
-    [wallet, connection]
+    [
+      wallet,
+      connection,
+      getLatestBlockhash,       // included so we always have freshest references
+      verifyTransactionStatus,  // included for the same reason
+    ]
   );
 
   return executeTransaction;
