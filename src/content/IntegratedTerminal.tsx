@@ -27,10 +27,10 @@ const IntegratedTerminal = (props: {
 
     const [isLoaded, setIsLoaded] = useState(false);
     const [currentPair, setCurrentPair] = useState<{from: string, to: string} | null>(null);
-
+    
     const passthroughWalletContextState = useWallet();
     const { setShowModal } = useUnifiedWalletContext();
-
+    
     const [referralService, setReferralService] = useState<ReferralService | null>(null);
     const wallet = useWallet();
 
@@ -52,9 +52,28 @@ const IntegratedTerminal = (props: {
                 const connection = new Connection(rpcUrl);
                 const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
                 
+                // First check if we need to initialize
+                const referralKey = new PublicKey('6sBhr7PvQNizNDzin66r1WhznJXXqpGtpHct6ZamfHUe');
+                const [feeAccount] = await PublicKey.findProgramAddressSync(
+                    [
+                        Buffer.from('referral_ata'),
+                        referralKey.toBuffer(),
+                        new PublicKey(toMint).toBuffer(),
+                    ],
+                    new PublicKey('REFER4ZgmyYx9c6He5XfaTMiGfdLwRnkV4RPp9t9iF3')
+                );
+
+                // Check if account exists
+                const accountInfo = await connection.getAccountInfo(feeAccount);
+                if (accountInfo) {
+                    console.log('Referral token account already exists:', feeAccount.toString());
+                    return;
+                }
+                
                 const result = await referralService.initializeReferralTokenAccount(toMint, wallet.publicKey);
                 if (result?.tx && wallet.signTransaction) {
                     result.tx.recentBlockhash = blockhash;
+                    result.tx.feePayer = wallet.publicKey;
                     const signed = await wallet.signTransaction(result.tx);
                     
                     try {
@@ -63,14 +82,14 @@ const IntegratedTerminal = (props: {
                             signature,
                             blockhash,
                             lastValidBlockHeight
-                        });
-                        console.log('Referral token account transaction confirmed:', signature);
+                        }, 'confirmed');
+                        console.log('Referral token account initialized:', signature);
                     } catch (sendError) {
                         console.error('Failed to send/confirm transaction:', sendError);
                     }
                 }
             } catch (error) {
-                console.error('RPC or transaction error:', error);
+                console.warn('Referral account setup warning:', error);
             }
         };
 
@@ -143,7 +162,6 @@ const IntegratedTerminal = (props: {
                 }
             }, 500);
         }
-
         if (intervalId) {
             return () => clearInterval(intervalId);
         }

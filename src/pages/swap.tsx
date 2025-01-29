@@ -1,13 +1,11 @@
 // src/pages/swap.tsx
-
-import React, { useState, useEffect } from 'react';
-import IntegratedTerminal from 'src/content/IntegratedTerminal';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import TradingViewChart from 'src/components/TradingViewChart';
 import { useSwapContext } from 'src/contexts/SwapContext';
 import { DEFAULT_EXPLORER } from 'src/types';
 import { listPairsWithMetadataForToken } from 'src/components/TradingViewChart/codexApi';
 import SwapTerminal from 'src/components/SwapTerminal';
-import cn from 'classnames'; // Ensure 'classnames' is installed and imported
+import cn from 'classnames';
 
 interface SwapPageProps {
   rpcUrl: string;
@@ -52,10 +50,8 @@ const SwapPage: React.FC<SwapPageProps> = ({
   const { form, fromTokenInfo, toTokenInfo } = useSwapContext();
   const { fromMint } = form;
 
-  // State for tracking selected token pair
   const [selectedPair, setSelectedPair] = useState<{ fromMint: string; toMint: string } | null>(null);
   
-  // Pair discovery state
   const [pairTestState, setPairTestState] = useState<PairTestState>({
     status: 'idle',
     currentAttempt: null,
@@ -63,8 +59,9 @@ const SwapPage: React.FC<SwapPageProps> = ({
     error: null,
   });
 
-  // Enhanced pair discovery function
-  const discoverPair = async (fromAddress: string, toAddress: string) => {
+  const discoverPair = useCallback(async (fromAddress: string, toAddress: string) => {
+    if (!fromAddress || !toAddress) return;
+    
     console.log('🔍 Discovering pair:', { fromAddress, toAddress });
     
     setPairTestState(prev => ({
@@ -106,48 +103,52 @@ const SwapPage: React.FC<SwapPageProps> = ({
       });
     } catch (error) {
       console.error('⚠️ Error discovering pair:', error);
-      setPairTestState({
+      setPairTestState(prev => ({
+        ...prev,
         status: 'error',
         currentAttempt: null,
         pairAddress: null,
         error: error instanceof Error ? error.message : 'Failed to fetch pair data',
         liquidity: '0'
-      });
+      }));
     }
-  };
+  }, []);
 
-  // Handle token pair changes from Jupiter terminal
-  const handleTokenPairChange = async () => {
+  const handleTokenPairChange = useCallback(async (fromMint: string, toMint: string) => {
     console.log('🔄 Token pair changed:', {
-      fromMint: form.fromMint,
-      toMint: form.toMint,
+      fromMint,
+      toMint,
       fromSymbol: fromTokenInfo?.symbol,
       toSymbol: toTokenInfo?.symbol,
     });
 
-    if (form.fromMint && form.toMint) {
-      setSelectedPair({ fromMint: form.fromMint, toMint: form.toMint });
-      await discoverPair(form.fromMint, form.toMint);
-    }
-  };
+    setSelectedPair({ fromMint, toMint });
+    discoverPair(fromMint, toMint);
+    
+  }, [discoverPair, fromTokenInfo?.symbol, toTokenInfo?.symbol]);
 
-  // Watch for form changes in SwapContext
   useEffect(() => {
     if (form.fromMint && form.toMint) {
-      handleTokenPairChange();
+      const timeoutId = setTimeout(() => {
+        handleTokenPairChange(form.fromMint, form.toMint);
+      }, 100);
+      return () => clearTimeout(timeoutId);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form.fromMint, form.toMint]);
+  }, [form.fromMint, form.toMint, handleTokenPairChange]);
 
-  // Handle client-side mounting
   useEffect(() => {
     setIsMounted(true);
     const checkDeviceType = () => {
       setIsDesktop(window.matchMedia('(min-width: 768px)').matches);
     };
     checkDeviceType();
-    window.addEventListener('resize', checkDeviceType);
-    return () => window.removeEventListener('resize', checkDeviceType);
+    
+    const resizeHandler = () => {
+      requestAnimationFrame(checkDeviceType);
+    };
+    
+    window.addEventListener('resize', resizeHandler);
+    return () => window.removeEventListener('resize', resizeHandler);
   }, []);
 
   if (!isMounted) {
@@ -163,9 +164,7 @@ const SwapPage: React.FC<SwapPageProps> = ({
 
   return (
     <div className="flex flex-col gap-4 p-4 max-w-[1980px] mx-auto">
-      {/* Main trading section */}
       <div className="flex flex-col lg:flex-row gap-4">
-        {/* Chart Section - Increased width */}
         <div className="lg:w-3/4 min-h-[600px] bg-[#13111C] rounded-xl shadow-lg p-4">
           {fromMint ? (
             <div className="flex flex-col h-full">
@@ -176,8 +175,8 @@ const SwapPage: React.FC<SwapPageProps> = ({
                   toMint={selectedPair?.toMint || ''}
                   className="h-full"
                   pairAddress={pairTestState.pairAddress || ''}
-                  fromTokenInfo={fromTokenInfo || undefined}  // Convert null to undefined
-                  toTokenInfo={toTokenInfo || undefined} 
+                  fromTokenInfo={fromTokenInfo || undefined}
+                  toTokenInfo={toTokenInfo || undefined}
                 />
               </div>
             </div>
@@ -191,20 +190,19 @@ const SwapPage: React.FC<SwapPageProps> = ({
           )}
         </div>
 
-        {/* Trading Terminal Section - Reduced width and removed background */}
         <div className="lg:w-1/4">
           <div className="rounded-xl bg-[#13111C]">
-            {/* Removed bg-[#13111C] */}
             <SwapTerminal
               rpcUrl={rpcUrl}
-              watchAllFields={watchAllFields}
+              watchAllFields={{
+                ...watchAllFields,
+                refetchIntervalForTokenAccounts: 10000,
+              }}
               ShouldWrapWalletProvider={ShouldWrapWalletProvider}
-              showLogo={false} // Set to false to maintain your current layout
+              showLogo={false}
               onTokenPairChange={(fromMint, toMint) => {
-                console.log('Token pair changed:', { fromMint, toMint });
                 if (fromMint && toMint) {
-                  discoverPair(fromMint, toMint);
-                  setSelectedPair({ fromMint, toMint });
+                  handleTokenPairChange(fromMint, toMint);
                 }
               }}
             />
@@ -212,7 +210,6 @@ const SwapPage: React.FC<SwapPageProps> = ({
         </div>
       </div>
 
-      {/* Bottom Info Sections */}
       <div className="grid grid-cols-1 md:grid-cols-1 lg:grid-cols-3 gap-16">
         <InfoSection title="DEX PAID CHECK" className="lg:col-span-1" />
         <InfoSection title="LATEST MINTED TOKENS" className="lg:col-span-1" />

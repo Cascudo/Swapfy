@@ -1,4 +1,3 @@
-// src/contexts/SwapContext.tsx
 import {
   fetchSourceAddressAndDestinationAddress,
   getTokenBalanceChangesFromTransactionResponse,
@@ -12,7 +11,7 @@ import {
 } from '@jup-ag/react-hook';
 import { useConnection, useLocalStorage } from '@jup-ag/wallet-adapter';
 import { TokenInfo } from '@solana/spl-token-registry';
-import { PublicKey } from '@solana/web3.js';
+import { PublicKey, Transaction } from '@solana/web3.js';
 import Decimal from 'decimal.js';
 import JSBI from 'jsbi';
 import {
@@ -64,9 +63,11 @@ export type SwappingStatus =
   | 'loading'
   | 'pending-approval'
   | 'sending'
+  | 'confirming'
   | 'fail'
   | 'success'
   | 'timeout';
+
 export interface ISwapContext {
   form: IForm;
   setForm: Dispatch<SetStateAction<IForm>>;
@@ -147,9 +148,7 @@ const INITIAL_FORM: IForm = {
   toValue: '',
   slippageBps: Math.ceil(DEFAULT_SLIPPAGE_PCT * 100),
   userSlippageMode: SLIPPAGE_MODE_DEFAULT,
-  dynamicSlippageBps: Math.ceil(
-    DEFAULT_MAX_DYNAMIC_SLIPPAGE_PCT * 100
-  ),
+  dynamicSlippageBps: Math.ceil(DEFAULT_MAX_DYNAMIC_SLIPPAGE_PCT * 100),
 };
 
 export const SwapContextProvider = (
@@ -169,24 +168,37 @@ export const SwapContextProvider = (
     maxAccounts,
     children,
   } = props;
-  const { screen } = useScreenState();
+
+  // -------------------------------------------------------------------------
+  // Updated destructuring from ScreenProvider to get transaction state
+  // -------------------------------------------------------------------------
+  const {
+    screen,
+    setScreen,
+    transactionState,
+    setTransactionState,
+    canAttemptNewTransaction,
+  } = useScreenState();
+  // -------------------------------------------------------------------------
+
   const { isLoaded, getTokenInfo } = useTokenContext();
   const { wallet } = useWalletPassThrough();
   const { refresh: refreshAccount } = useAccounts();
   const { connection } = useConnection();
   const executeTransaction = useExecuteTransaction();
   const { data: referenceFees } = useReferenceFeesQuery();
-  const { priorityLevel, modifyComputeUnitPriceAndLimit } =
-    usePrioritizationFee();
+  const { priorityLevel, modifyComputeUnitPriceAndLimit } = usePrioritizationFee();
 
   const walletPublicKey = useMemo(
     () => wallet?.adapter.publicKey?.toString(),
     [wallet?.adapter.publicKey]
   );
+
   const formProps: FormProps = useMemo(
     () => ({ ...INITIAL_FORM, ...originalFormProps }),
     [originalFormProps]
   );
+
   const localStoragePrefix =
     typeof window !== 'undefined' &&
     window.Jupiter &&
@@ -199,18 +211,15 @@ export const SwapContextProvider = (
     props.defaultFixedSlippage || DEFAULT_SLIPPAGE_PCT
   );
 
-  const [userSlippageDynamic, setUserSlippageDynamic] =
-    useLocalStorage<number>(
-      `${localStoragePrefix}-slippage-dynamic`,
-      props.defaultDynamicSlippage ||
-        DEFAULT_MAX_DYNAMIC_SLIPPAGE_PCT
-    );
+  const [userSlippageDynamic, setUserSlippageDynamic] = useLocalStorage<number>(
+    `${localStoragePrefix}-slippage-dynamic`,
+    props.defaultDynamicSlippage || DEFAULT_MAX_DYNAMIC_SLIPPAGE_PCT
+  );
 
-  const [userSlippageMode, setUserSlippageMode] =
-    useLocalStorage<SlippageMode>(
-      `${localStoragePrefix}-slippage-mode`,
-      props.defaultSlippageMode || SLIPPAGE_MODE_DEFAULT
-    );
+  const [userSlippageMode, setUserSlippageMode] = useLocalStorage<SlippageMode>(
+    `${localStoragePrefix}-slippage-mode`,
+    props.defaultSlippageMode || SLIPPAGE_MODE_DEFAULT
+  );
 
   const [form, setForm] = useState<IForm>(() => {
     const getSlippageBps = (slippage: number) => Math.ceil(slippage * 100);
@@ -243,28 +252,17 @@ export const SwapContextProvider = (
   }, [form.toMint, getTokenInfo, isLoaded]);
 
   const isToPairFocused = useRef<boolean>(false);
-
-  const swapMode = isToPairFocused.current
-    ? SwapMode.ExactOut
-    : SwapMode.ExactIn;
+  const swapMode = isToPairFocused.current ? SwapMode.ExactOut : SwapMode.ExactIn;
 
   // Set value given initial amount
   const setupInitialAmount = useCallback(() => {
-    if (
-      !formProps.initialAmount ||
-      !fromTokenInfo ||
-      !toTokenInfo
-    )
-      return;
+    if (!formProps.initialAmount || !fromTokenInfo || !toTokenInfo) return;
 
     const toUiAmount = (mint: string) => {
       const tokenInfo = mint ? getTokenInfo(mint) : undefined;
       if (!tokenInfo) return;
       return String(
-        fromLamports(
-          JSBI.BigInt(formProps.initialAmount ?? 0),
-          tokenInfo.decimals
-        )
+        fromLamports(JSBI.BigInt(formProps.initialAmount ?? 0), tokenInfo.decimals)
       );
     };
 
@@ -295,25 +293,15 @@ export const SwapContextProvider = (
     setupInitialAmount();
   }, [formProps.initialAmount, setupInitialAmount]);
 
-  // New useEffect to handle token changes
-  // (Placeholder for any additional logic related to token changes)
-
-  // We don't want to effect to keep trigger for fromValue and toValue
   const userInputChange = useMemo(() => {
-    return swapMode === SwapMode.ExactOut
-      ? form.toValue
-      : form.fromValue;
+    return swapMode === SwapMode.ExactOut ? form.toValue : form.fromValue;
   }, [form.fromValue, form.toValue, swapMode]);
 
   const jupiterParams: UseJupiterProps = useMemo(() => {
     const calculateAmount = () => {
-      if (isToPairFocused.current === false) {
+      if (!isToPairFocused.current) {
         // ExactIn
-        if (
-          !fromTokenInfo ||
-          !form.fromValue ||
-          !hasNumericValue(form.fromValue)
-        ) {
+        if (!fromTokenInfo || !form.fromValue || !hasNumericValue(form.fromValue)) {
           return JSBI.BigInt(0);
         }
         return JSBI.BigInt(
@@ -325,11 +313,7 @@ export const SwapContextProvider = (
       }
 
       // ExactOut
-      if (
-        !toTokenInfo ||
-        !form.toValue ||
-        !hasNumericValue(form.toValue)
-      ) {
+      if (!toTokenInfo || !form.toValue || !hasNumericValue(form.toValue)) {
         return JSBI.BigInt(0);
       }
       return JSBI.BigInt(
@@ -344,12 +328,8 @@ export const SwapContextProvider = (
 
     return {
       amount,
-      inputMint: form.fromMint
-        ? new PublicKey(form.fromMint)
-        : undefined,
-      outputMint: form.toMint
-        ? new PublicKey(form.toMint)
-        : undefined,
+      inputMint: form.fromMint ? new PublicKey(form.fromMint) : undefined,
+      outputMint: form.toMint ? new PublicKey(form.toMint) : undefined,
       swapMode,
       slippageBps: form.slippageBps,
       maxAccounts,
@@ -366,7 +346,6 @@ export const SwapContextProvider = (
     toTokenInfo,
   ]);
 
-  // Always call useJupiter with safe params
   const {
     quoteResponseMeta: ogQuoteResponseMeta,
     refresh,
@@ -388,7 +367,7 @@ export const SwapContextProvider = (
       setQuoteResponseMeta(null);
       return;
     }
-    // the UI sorts the best route depending on ExactIn or ExactOut
+    // The UI sorts the best route depending on ExactIn or ExactOut
     setQuoteResponseMeta(ogQuoteResponseMeta);
   }, [ogQuoteResponseMeta, swapMode]);
 
@@ -403,33 +382,26 @@ export const SwapContextProvider = (
     }
 
     setForm((prev) => {
+      if (!fromTokenInfo || !toTokenInfo) return prev;
       const newValue = { ...prev };
 
-      if (!fromTokenInfo || !toTokenInfo) return prev;
-
-      let { inAmount, outAmount } = quoteResponseMeta?.quoteResponse || {};
+      const { inAmount, outAmount } = quoteResponseMeta?.quoteResponse || {};
       if (swapMode === SwapMode.ExactIn) {
         newValue.toValue = outAmount
           ? new Decimal(outAmount.toString())
               .div(10 ** toTokenInfo.decimals)
-              .toFixed(6) // Ensuring 6 decimal places
+              .toFixed(6)
           : '';
       } else {
         newValue.fromValue = inAmount
           ? new Decimal(inAmount.toString())
               .div(10 ** fromTokenInfo.decimals)
-              .toFixed(6) // Ensuring 6 decimal places
+              .toFixed(6)
           : '';
       }
       return newValue;
     });
-  }, [
-    form.fromValue,
-    fromTokenInfo,
-    quoteResponseMeta,
-    swapMode,
-    toTokenInfo,
-  ]);
+  }, [form.fromValue, fromTokenInfo, quoteResponseMeta, swapMode, toTokenInfo]);
 
   const onSubmitWithIx = useCallback(
     (swapResult: SwapResult) => {
@@ -453,8 +425,7 @@ export const SwapContextProvider = (
         setTxStatus((prev) => ({
           txid: '',
           status: 'fail',
-          quotedDynamicSlippageBps:
-            prev?.quotedDynamicSlippageBps,
+          quotedDynamicSlippageBps: prev?.quotedDynamicSlippageBps,
         }));
         setLastSwapResult({
           swapResult,
@@ -465,15 +436,13 @@ export const SwapContextProvider = (
     [quoteResponseMeta]
   );
 
-    const onRequestIx = useCallback(
+  const onRequestIx = useCallback(
     async (): Promise<IOnRequestIxCallback> => {
-      if (!walletPublicKey || !wallet?.adapter)
-        throw new Error('Missing wallet');
-      if (!quoteResponseMeta)
-        throw new Error('Missing quote');
+      if (!walletPublicKey || !wallet?.adapter) throw new Error('Missing wallet');
+      if (!quoteResponseMeta) throw new Error('Missing quote');
 
-      const inputMint = quoteResponseMeta?.quoteResponse.inputMint;
-      const outputMint = quoteResponseMeta?.quoteResponse.outputMint;
+      const inputMint = quoteResponseMeta.quoteResponse.inputMint;
+      const outputMint = quoteResponseMeta.quoteResponse.outputMint;
 
       // A direct reference from https://station.jup.ag/docs/apis/swap-api#instructions-instead-of-transaction
       const fetchWithRetry = async (attempt = 1): Promise<any> => {
@@ -492,7 +461,7 @@ export const SwapContextProvider = (
           return await response.json();
         } catch (error) {
           if (attempt < 3) {
-            await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+            await new Promise((resolve) => setTimeout(resolve, 1000 * attempt));
             return fetchWithRetry(attempt + 1);
           }
           throw error;
@@ -509,19 +478,15 @@ export const SwapContextProvider = (
           },
         });
 
-        console.log(
-          'Failed to get swap instructions: ',
-          instructions
-        );
+        console.log('Failed to get swap instructions: ', instructions);
         throw new Error('Failed to get swap instructions');
       }
 
-      const [sourceAddress, destinationAddress] = [inputMint, outputMint].map(
-        (mint) =>
-          getAssociatedTokenAddressSync(
-            new PublicKey(mint),
-            new PublicKey(walletPublicKey)
-          )
+      const [sourceAddress, destinationAddress] = [inputMint, outputMint].map((mint) =>
+        getAssociatedTokenAddressSync(
+          new PublicKey(mint),
+          new PublicKey(walletPublicKey)
+        )
       );
 
       return {
@@ -534,240 +499,108 @@ export const SwapContextProvider = (
         onSubmitWithIx,
       };
     },
-    [
-      walletPublicKey,
-      wallet?.adapter,
-      quoteResponseMeta,
-      onSubmitWithIx,
-    ]
+    [walletPublicKey, wallet?.adapter, quoteResponseMeta, onSubmitWithIx, setErrors]
   );
 
-  const onSubmit = useCallback(async () => {
-    if (
-      !walletPublicKey ||
-      !wallet?.adapter ||
-      !quoteResponseMeta
-    ) {
-      return null;
+  // Helper: pick the correct fee from `referenceFees` based on `priorityLevel`
+  const getReferenceFee = useCallback(() => {
+    if (!referenceFees?.jup.m || !referenceFees?.jup.h || !referenceFees?.jup.vh) {
+      return referenceFees?.swapFee;
     }
+    switch (priorityLevel) {
+      case 'MEDIUM':
+        return referenceFees.jup.m;
+      case 'HIGH':
+        return referenceFees.jup.h;
+      case 'VERY_HIGH':
+        return referenceFees.jup.vh;
+      default:
+        return referenceFees.swapFee;
+    }
+  }, [referenceFees, priorityLevel]);
 
-    let intervalId: NodeJS.Timer | undefined;
+  // -------------------------------------------------------------------------
+  // Updated handleSuccessfulTransaction merged here
+  // -------------------------------------------------------------------------
+  const handleSuccessfulTransaction = useCallback(
+    async (
+      txid: string,
+      transactionResponse: any,
+      {
+        sourceAddress,
+        destinationAddress,
+        quoteResponseMeta,
+        dynamicSlippageBps,
+      }: {
+        sourceAddress: PublicKey;
+        destinationAddress: PublicKey;
+        quoteResponseMeta: QuoteResponseMeta;
+        dynamicSlippageBps?: string;
+      }
+    ) => {
+      try {
+        const { inputMint, outputMint } = quoteResponseMeta.quoteResponse;
 
-    const swapResult = new Promise<SwapResult | null>(
-      async (res, rej) => {
-        if (!wallet.adapter.publicKey) return null;
-
-        setTxStatus({
-          txid: '',
-          status: 'loading',
-          quotedDynamicSlippageBps: '',
+        // Double check transaction status on-chain
+        const confirmedTx = await connection.getTransaction(txid, {
+          maxSupportedTransactionVersion: 0,
         });
 
-        const swapTransactionResponse =
-          await fetchSwapTransaction({
-            quoteResponseMeta,
-            userPublicKey:
-              wallet.adapter.publicKey,
-            prioritizationFeeLamports: 1, // 1 is meaningless, since we append the fees ourselves in executeTransaction
-            wrapUnwrapSOL: true,
-            allowOptimizedWrappedSolTokenAccount: false,
-            dynamicSlippage:
-              form.userSlippageMode === 'DYNAMIC'
-                ? { maxBps: form.dynamicSlippageBps }
-                : undefined,
-          });
+        if (!confirmedTx || confirmedTx.meta?.err) {
+          throw new Error('Transaction failed on-chain verification');
+        }
 
-        if ('error' in swapTransactionResponse) {
-          console.error(
-            'Error in swapTransactionResponse',
-            swapTransactionResponse.error
-          );
-        } else {
-          modifyComputeUnitPriceAndLimit(
-            swapTransactionResponse.swapTransaction,
-            {
-              referenceFee: (() => {
-                if (
-                  !referenceFees?.jup.m ||
-                  !referenceFees?.jup.h ||
-                  !referenceFees?.jup.vh
-                ) {
-                  return referenceFees?.swapFee;
-                }
+        setTxStatus({
+          txid,
+          status: 'success',
+          quotedDynamicSlippageBps: dynamicSlippageBps,
+        });
 
-                if (priorityLevel === 'MEDIUM')
-                  return referenceFees.jup.m;
-                if (priorityLevel === 'HIGH')
-                  return referenceFees.jup.h;
-                if (priorityLevel === 'VERY_HIGH')
-                  return referenceFees.jup.vh;
-              })(),
-            }
-          );
-
-          const { inputMint, outputMint } =
-            quoteResponseMeta.quoteResponse;
-          const {
-            destinationAddress,
-            sourceAddress,
-          } = await fetchSourceAddressAndDestinationAddress({
-            connection,
+        const [sourceTokenBalanceChange, destinationTokenBalanceChange] =
+          getTokenBalanceChangesFromTransactionResponse({
+            txid,
             inputMint,
             outputMint,
-            userPublicKey:
-              wallet.adapter.publicKey!,
+            user: wallet?.adapter.publicKey!,
+            sourceAddress,
+            destinationAddress,
+            transactionResponse: confirmedTx,
+            hasWrappedSOL: false,
           });
 
-          const result = await executeTransaction(
-            swapTransactionResponse.swapTransaction,
-            {
-              blockhash:
-                swapTransactionResponse.blockhash,
-              lastValidBlockHeight:
-                swapTransactionResponse.lastValidBlockHeight,
-              skipPreflight: true,
-            },
-            {
-              onPending: () => {
-                setTxStatus({
-                  txid: '',
-                  status: 'pending-approval',
-                  quotedDynamicSlippageBps:
-                    swapTransactionResponse
-                      .dynamicSlippageReport
-                      ?.slippageBps?.toString(),
-                });
-              },
-              onSending: () => {
-                setTxStatus({
-                  txid: '',
-                  status: 'sending',
-                  quotedDynamicSlippageBps:
-                    swapTransactionResponse
-                      .dynamicSlippageReport
-                      ?.slippageBps?.toString(),
-                });
-              },
-              onProcessed: () => {
-                // Not using processed for now
-              },
-              onSuccess: (
-                txid,
-                transactionResponse
-              ) => {
-                setTxStatus({
-                  txid,
-                  status: 'success',
-                  quotedDynamicSlippageBps:
-                    swapTransactionResponse
-                      .dynamicSlippageReport
-                      ?.slippageBps?.toString(),
-                });
+        setLastSwapResult({
+          swapResult: {
+            txid,
+            inputAddress: inputMint,
+            outputAddress: outputMint,
+            inputAmount: sourceTokenBalanceChange,
+            outputAmount: destinationTokenBalanceChange,
+          },
+          quoteResponseMeta,
+        });
 
-                const [
-                  sourceTokenBalanceChange,
-                  destinationTokenBalanceChange,
-                ] =
-                  getTokenBalanceChangesFromTransactionResponse({
-                    txid,
-                    inputMint,
-                    outputMint,
-                    user:
-                      wallet.adapter.publicKey!,
-                    sourceAddress,
-                    destinationAddress,
-                    transactionResponse,
-                    hasWrappedSOL: false,
-                  });
+        // Give the UI time to update
+        await new Promise((resolve) => setTimeout(resolve, 500));
 
-                setLastSwapResult({
-                  swapResult: {
-                    txid,
-                    inputAddress: inputMint,
-                    outputAddress: outputMint,
-                    inputAmount:
-                      sourceTokenBalanceChange,
-                    outputAmount:
-                      destinationTokenBalanceChange,
-                  },
-                  quoteResponseMeta:
-                    quoteResponseMeta,
-                });
-
-                return res({
-                  txid,
-                  inputAddress: inputMint,
-                  outputAddress: outputMint,
-                  inputAmount:
-                    sourceTokenBalanceChange,
-                  outputAmount:
-                    destinationTokenBalanceChange,
-                });
-              },
-            }
-          );
-
-          if ('transactionResponse' in result === false) {
-            console.log(result);
-
-            setLastSwapResult({
-              swapResult: {
-                error:
-                  'error' in result
-                    ? result.error
-                    : undefined,
-              },
-              quoteResponseMeta: quoteResponseMeta,
-            });
-
-            setTxStatus({
-              txid: result.txid || '',
-              status:
-                'error' in result &&
-                result.error?.message.includes(
-                  'expired'
-                )
-                  ? 'timeout'
-                  : 'fail',
-              quotedDynamicSlippageBps:
-                swapTransactionResponse
-                  .dynamicSlippageReport
-                  ?.slippageBps?.toString(),
-            });
-
-            return rej(null);
-          }
-        }
+        // Refresh quotes and account info
+        refresh();
+        refreshAccount();
+      } catch (error) {
+        console.error('Error in handleSuccessfulTransaction:', error);
+        setTxStatus({
+          txid,
+          status: 'fail',
+          quotedDynamicSlippageBps: dynamicSlippageBps,
+        });
       }
-    )
-      .catch((result: SwapResult) => {
-        console.log(result);
-        return null;
-      })
-      .finally(() => {
-        if (intervalId) {
-          clearInterval(intervalId);
-        }
-      });
+    },
+    [connection, wallet?.adapter.publicKey, refresh, refreshAccount, setTxStatus, setLastSwapResult]
+  );
+  // -------------------------------------------------------------------------
 
-    return swapResult;
-  }, [
-    walletPublicKey,
-    wallet?.adapter,
-    quoteResponseMeta,
-    fetchSwapTransaction,
-    form.userSlippageMode,
-    form.dynamicSlippageBps,
-    modifyComputeUnitPriceAndLimit,
-    connection,
-    executeTransaction,
-    referenceFees?.jup.m,
-    referenceFees?.jup.h,
-    referenceFees?.jup.vh,
-    referenceFees?.swapFee,
-    priorityLevel,
-  ]);
-
+  // -------------------------------------------------------------------------
+  // Updated `reset` function to also reset transaction state
+  // -------------------------------------------------------------------------
   const reset = useCallback(
     ({ resetValues } = { resetValues: false }) => {
       if (resetValues) {
@@ -776,31 +609,260 @@ export const SwapContextProvider = (
       } else {
         setForm((prev) => ({ ...prev, toValue: '' }));
       }
-
       setQuoteResponseMeta(null);
       setErrors({});
       setLastSwapResult(null);
       setTxStatus(undefined);
+
+      setTransactionState({
+        attemptCount: 0,
+        isProcessing: false,
+        lastSignature: undefined,
+        lastAttemptTime: undefined,
+      });
+
       refreshAccount();
     },
-    [refreshAccount, setupInitialAmount]
+    [refreshAccount, setupInitialAmount, setTransactionState]
   );
+  // -------------------------------------------------------------------------
+
+  // -------------------------------------------------------------------------
+  // Updated onSubmit with transactionState checks and new logs
+  // -------------------------------------------------------------------------
+  const onSubmit = useCallback(async () => {
+    if (!walletPublicKey || !wallet?.adapter || !quoteResponseMeta) {
+      return null;
+    }
+
+    // Check if we can attempt a new transaction
+    if (!canAttemptNewTransaction()) {
+      const error = new Error('Transaction in progress or too many attempts');
+      setErrors((prev) => ({
+        ...prev,
+        'transaction-limit': {
+          title: 'Transaction Limit',
+          message: 'Please wait for the current transaction to complete or try again later',
+        },
+      }));
+      throw error;
+    }
+
+    try {
+      // 1) Log swap details
+      console.log('Swap Details:', {
+        fromMint: quoteResponseMeta.quoteResponse.inputMint,
+        toMint: quoteResponseMeta.quoteResponse.outputMint,
+        amount: quoteResponseMeta.quoteResponse.inAmount,
+        slippage: form.slippageBps,
+        mode: form.userSlippageMode,
+      });
+
+      // 2) Log fetchSwapTransaction params
+      console.log('Fetching swap transaction with params:', {
+        userPublicKey: wallet.adapter.publicKey?.toString(),
+        wrapUnwrapSOL: true,
+        allowOptimizedWrappedSolTokenAccount: false,
+        dynamicSlippage:
+          form.userSlippageMode === 'DYNAMIC'
+            ? { maxBps: form.dynamicSlippageBps }
+            : undefined,
+      });
+
+      setTxStatus({
+        txid: '',
+        status: 'loading',
+        quotedDynamicSlippageBps: '',
+      });
+
+      const swapTransactionResponse = await fetchSwapTransaction({
+        quoteResponseMeta,
+        userPublicKey: wallet.adapter.publicKey!,
+        prioritizationFeeLamports: 1,
+        wrapUnwrapSOL: true,
+        allowOptimizedWrappedSolTokenAccount: false,
+        dynamicSlippage:
+          form.userSlippageMode === 'DYNAMIC'
+            ? { maxBps: form.dynamicSlippageBps }
+            : undefined,
+      });
+
+      // 3) Log swapTransactionResponse result
+      if ('error' in swapTransactionResponse) {
+        console.error('Detailed swap transaction error:', {
+          error: swapTransactionResponse.error,
+          quoteResponse: quoteResponseMeta.quoteResponse,
+          userPublicKey: wallet.adapter.publicKey?.toString(),
+         });
+                
+      // Convert the error to a string appropriately
+      const errorMessage = typeof swapTransactionResponse.error === 'string'
+        ? swapTransactionResponse.error
+        : swapTransactionResponse.error instanceof Error
+        ? swapTransactionResponse.error.message
+        : JSON.stringify(swapTransactionResponse.error);
+          throw new Error(errorMessage);
+      } else {
+        console.log('Swap transaction setup successful:', {
+          hasFeePayer:
+            ('feePayer' in swapTransactionResponse.swapTransaction) 
+              ? swapTransactionResponse.swapTransaction.feePayer?.toString() 
+              : 'versioned-transaction',
+          recentBlockhash: swapTransactionResponse.blockhash,
+          lastValidBlockHeight: swapTransactionResponse.lastValidBlockHeight,
+        });
+      }
+
+      // Update transaction state with new attempt
+      setTransactionState((prev) => ({
+        ...prev,
+        attemptCount: prev.attemptCount + 1,
+        isProcessing: true,
+        lastAttemptTime: Date.now(),
+      }));
+
+      const transaction = swapTransactionResponse.swapTransaction;
+
+      if (transaction instanceof Transaction) {
+        transaction.feePayer = wallet.adapter.publicKey!;
+      }
+
+      // Add compute budget instruction
+      modifyComputeUnitPriceAndLimit(transaction, {
+        referenceFee: getReferenceFee(),
+      });
+
+      const { inputMint, outputMint } = quoteResponseMeta.quoteResponse;
+      const { destinationAddress, sourceAddress } =
+        await fetchSourceAddressAndDestinationAddress({
+          connection,
+          inputMint,
+          outputMint,
+          userPublicKey: wallet.adapter.publicKey!,
+        });
+
+      const result = await executeTransaction(
+        transaction,
+        {
+          blockhash: swapTransactionResponse.blockhash,
+          lastValidBlockHeight: swapTransactionResponse.lastValidBlockHeight,
+          skipPreflight: true,
+        },
+        {
+          onPending: () => {
+            setTxStatus({
+              txid: '',
+              status: 'pending-approval',
+              quotedDynamicSlippageBps:
+                swapTransactionResponse.dynamicSlippageReport?.slippageBps?.toString(),
+            });
+          },
+          onSending: (txid) => {
+            setTransactionState((prev) => ({
+              ...prev,
+              lastSignature: txid,
+            }));
+
+            setTxStatus({
+              txid,
+              status: 'sending',
+              quotedDynamicSlippageBps:
+                swapTransactionResponse.dynamicSlippageReport?.slippageBps?.toString(),
+            });
+          },
+          onProcessed: () => {
+            // Add any processing logic if needed
+          },
+          onSuccess: (txid, transactionResponse) => {
+            // Reset transaction state on success
+            setTransactionState({
+              attemptCount: 0,
+              isProcessing: false,
+              lastSignature: undefined,
+              lastAttemptTime: undefined,
+            });
+
+            handleSuccessfulTransaction(txid, transactionResponse, {
+              sourceAddress,
+              destinationAddress,
+              quoteResponseMeta,
+              dynamicSlippageBps:
+                swapTransactionResponse.dynamicSlippageReport?.slippageBps?.toString(),
+            });
+          },
+        }
+      );
+
+      if ('success' in result && result.success) {
+        // Convert the executeTransaction result into SwapResult format
+        const swapResult: SwapResult = {
+          txid: result.txid,
+          inputAddress: quoteResponseMeta.quoteResponse.inputMint,
+          outputAddress: quoteResponseMeta.quoteResponse.outputMint,
+          inputAmount: Number(quoteResponseMeta.quoteResponse.inAmount),
+          outputAmount: Number(quoteResponseMeta.quoteResponse.outAmount),
+        };
+        return swapResult;
+      }
+
+      return null;   
+    } catch (error: any) {
+      // 4) Add detailed error log
+      console.error('Detailed swap error:', {
+        error: error?.message,
+        stack: error?.stack,
+        walletConnected: !!wallet?.adapter?.publicKey,
+        hasQuote: !!quoteResponseMeta,
+        lastTxStatus: txStatus?.status,
+      });
+
+      // Update transaction state on error
+      setTransactionState((prev) => ({
+        ...prev,
+        isProcessing: false,
+      }));
+
+      setTxStatus((prev) => ({
+        txid: '',
+        status: 'fail',
+        quotedDynamicSlippageBps: prev?.quotedDynamicSlippageBps,
+      }));
+
+      return null;
+    }
+  }, [
+    walletPublicKey,
+    wallet?.adapter,
+    quoteResponseMeta,
+    canAttemptNewTransaction,
+    connection,
+    fetchSwapTransaction,
+    executeTransaction,
+    modifyComputeUnitPriceAndLimit,
+    form.userSlippageMode,
+    form.dynamicSlippageBps,
+    form.slippageBps, // ensures we log the correct slippage
+    getReferenceFee,
+    handleSuccessfulTransaction,
+    setTransactionState,
+    txStatus?.status,
+  ]);
+  // -------------------------------------------------------------------------
 
   // onFormUpdate callback
   useEffect(() => {
-    if (typeof window.Jupiter.onFormUpdate === 'function') {
+    if (typeof window.Jupiter?.onFormUpdate === 'function') {
       window.Jupiter.onFormUpdate(form);
     }
   }, [form]);
 
   // onScreenUpdate callback
   useEffect(() => {
-    if (typeof window.Jupiter.onScreenUpdate === 'function') {
+    if (typeof window.Jupiter?.onScreenUpdate === 'function') {
       window.Jupiter.onScreenUpdate(screen);
     }
   }, [screen]);
 
-  // Prepare the provider value with proper memoization
   const value: ISwapContext = useMemo(
     () => ({
       form,
@@ -816,7 +878,6 @@ export const SwapContextProvider = (
       onRequestIx,
       lastSwapResult,
       reset,
-
       displayMode,
       formProps,
       scriptDomain,
@@ -858,13 +919,9 @@ export const SwapContextProvider = (
       setUserSlippageMode,
       displayMode,
       formProps,
-      scriptDomain
+      scriptDomain,
     ]
   );
 
-  return (
-    <SwapContext.Provider value={value}>
-      {children}
-    </SwapContext.Provider>
-  );
+  return <SwapContext.Provider value={value}>{children}</SwapContext.Provider>;
 };

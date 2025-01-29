@@ -225,7 +225,7 @@ const SwappingScreen = () => {
 
   return (
     <div className="flex flex-col h-full w-full py-4 px-2">
-      {errorMessage || txStatus?.status === 'fail' ? (
+      {(errorMessage && !isLoading) || (!isLoading && txStatus?.status === 'fail') ? (
         <div className="flex justify-center">
           <div className="flex flex-col items-center justify-center text-center mt-12">
             <ErrorIcon />
