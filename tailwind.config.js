@@ -1,6 +1,6 @@
 /** @type {import('tailwindcss').Config} */
-
 const isWidgetOnly = process.env.MODE === 'widget';
+
 module.exports = {
   important: isWidgetOnly ? '#jupiter-terminal-instance' : false,
   corePlugins: {
@@ -9,7 +9,8 @@ module.exports = {
   mode: 'jit',
   darkMode: 'class',
   content: ['./src/**/*.{js,ts,jsx,tsx}'],
-  safelist: [ // Added safelist
+  safelist: [
+    // Original safelist
     'text-xs',
     'text-sm',
     'text-md',
@@ -17,13 +18,20 @@ module.exports = {
     'font-medium',
     'font-semibold',
     'text-white',
-    'text-opacity-100'
+    'text-opacity-100',
+    // Newly added classes
+    'h-10',
+    'py-3',
+    'px-4',
+    'rounded-xl',
+    'rounded-l-xl',
+    'rounded-r-xl',
   ],
   theme: {
     extend: {
+      // Keep existing colors
       colors: {
         info: '#5762F1',
-
         'jupiter-input-light': '#EBEFF1',
         'jupiter-jungle-green': '#24AE8F',
         'jupiter-primary': '#FBA43A',
@@ -52,9 +60,31 @@ module.exports = {
         'utility-warning-300': '#B54708',
         'utility-warning-600': '#FDB022',
       },
+      // Keep original + new fontSize
       fontSize: {
         xxs: ['0.625rem', '1rem'],
+        xs: ['0.75rem', '1rem'],
+        sm: ['0.875rem', '1.25rem'],
       },
+      // Newly added (height, padding, borderRadius, spacing)
+      height: {
+        10: '2.5rem',
+      },
+      padding: {
+        3: '0.75rem',
+        4: '1rem',
+      },
+      borderRadius: {
+        xl: '0.75rem',
+      },
+      spacing: {
+        0.5: '0.125rem',
+        1: '0.25rem',
+        2: '0.5rem',
+        3: '0.75rem',
+        4: '1rem',
+      },
+      // Keep original backgroundImage, keyframes, animation, boxShadow
       backgroundImage: {
         'v3-text-gradient': 'linear-gradient(247.44deg, #C7F284 13.88%, #00BEF0 99.28%)',
       },
@@ -84,7 +114,6 @@ module.exports = {
   },
   variants: {
     extend: {
-      // Enable dark mode, hover, on backgroundImage utilities
       backgroundImage: ['dark', 'hover', 'focus-within', 'focus'],
     },
   },

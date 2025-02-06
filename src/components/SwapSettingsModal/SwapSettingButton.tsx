@@ -20,13 +20,21 @@ const SwapSettingButton = ({
   roundBorder,
   children,
 }: ISwapSettingButton) => {
-  const classes = `relative flex-1 py-4 px-1 text-white/50 bg-[#1B1B1E]`;
+  // Use the "settings-button" class (from your global CSS) plus the original background and transitions
+  const baseClasses = classNames(
+    'settings-button', // relies on .settings-button { height: 42px !important; etc. }
+    'relative flex-1 text-white/50 bg-[#1B1B1E]',
+    'transition-all duration-200 ease-in-out',
+  );
+
+  // Determine if left or right border should be rounded
   const roundBorderClass = (() => {
     if (roundBorder === 'left') return 'rounded-l-xl';
     if (roundBorder === 'right') return 'rounded-r-xl';
     return '';
   })();
 
+  // Only apply left-border if this is not the first or last button
   const borderClassName = useMemo(() => {
     if (idx > 0 && idx < itemsCount) return 'border-l border-white/10';
   }, [idx, itemsCount]);
@@ -35,15 +43,27 @@ const SwapSettingButton = ({
     <button
       type="button"
       className={classNames(
-        '!h-[42px] relative border border-transparent',
+        baseClasses,
+        'relative border border-transparent',
         borderClassName,
-        highlighted ? ` ${roundBorderClass} !border-v3-primary` : '',
-        classes,
+        highlighted ? `${roundBorderClass} !border-v3-primary` : '',
         className,
       )}
       onClick={onClick}
     >
-      <div className={`h-full w-full leading-none flex justify-center items-center`}>{children}</div>
+      {/* 
+          "priority-button" is also from your global CSS. 
+          We optionally add 'h-full w-full flex items-center justify-center' 
+          so it visually centers and spans the button if desired.
+      */}
+      <div
+        className={classNames(
+          'priority-button',
+          'w-full h-full flex items-center justify-center',
+        )}
+      >
+        {children}
+      </div>
     </button>
   );
 };

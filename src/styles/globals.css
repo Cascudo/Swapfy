@@ -1,16 +1,58 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ----------------------------------------------------------------------------
+   Base styles for #jupiter-terminal
+   ---------------------------------------------------------------------------- */
 #jupiter-terminal * {
   box-sizing: border-box;
-  font-family: Inter, sans-serif;
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
 #jupiter-terminal *:focus {
   outline: none;
 }
 
-/* JupButton border gradient */
+/* Button base styles */
+#jupiter-terminal button {
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif !important;
+  text-rendering: optimizeLegibility !important;
+  -webkit-font-smoothing: antialiased !important;
+  letter-spacing: -0.01em !important;
+}
+
+/* Settings buttons (e.g., priority level, UI toggles) */
+#jupiter-terminal .settings-button {
+  height: 42px !important;
+  padding: 0.75rem 1rem !important;
+  font-size: 0.875rem !important; /* text-sm in Tailwind */
+  line-height: 1.25rem !important;
+  font-weight: 500 !important;
+  white-space: nowrap !important;
+  transition: all 0.2s ease-in-out !important;
+}
+
+/* Priority level buttons */
+#jupiter-terminal .priority-button {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  min-width: 80px !important;
+  padding: 0.75rem 1rem !important;
+}
+
+/* Modal styles */
+#jupiter-terminal .settings-modal {
+  background: #222B33;
+  border-radius: 1rem;
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1),
+    0 2px 4px -2px rgb(0 0 0 / 0.1);
+}
+
+/* Gradient border for .jup-gradient elements */
 #jupiter-terminal .jup-gradient::before {
   content: '';
   position: absolute;
@@ -26,55 +68,16 @@
   -webkit-mask-composite: source-out;
 }
 
-.hideScrollbar {
-  -ms-overflow-style: none;
+/* #jupiter-terminal input styles */
+#jupiter-terminal input {
+  color: white !important;
+  opacity: 1 !important;
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif !important;
 }
 
-.hideScrollbar::-webkit-scrollbar {
-  display: none;
-}
-
-.hideScrollbar::-moz-scrollbar {
-  display: none;
-}
-
-/* Custom scroll bar */
-.webkit-scrollbar::-webkit-scrollbar {
-  width: 8px;
-}
-
-.webkit-scrollbar::-webkit-scrollbar-thumb {
-  margin: 2px;
-  -webkit-border-radius: 10px;
-  border-radius: 10px;
-  background: #979797;
-}
-
-#jupiter-terminal .jup-gradient::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  border-radius: 0.5rem;
-  padding: 2px;
-  background: linear-gradient(91.26deg, #fcc00a 15.73%, #4ebae9 83.27%);
-  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-  mask-composite: exclude;
-  -webkit-mask-composite: source-out;
-}
-
-/* Add tooltip functionality */
-.jupiter-tooltip {
-  @apply invisible absolute;
-  @apply bg-black text-white p-2 rounded-lg;
-}
-
-.jupiter-has-tooltip:hover .jupiter-tooltip {
-  @apply visible z-50;
-}
-
+/* ----------------------------------------------------------------------------
+   Optional references for #integrated-terminal (if still in use)
+   ---------------------------------------------------------------------------- */
 #integrated-terminal {
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -88,7 +91,7 @@
   -webkit-font-smoothing: antialiased !important;
 }
 
-/* Updated button styles */
+/* Integrated-terminal .jup-gradient styles (if needed) */
 #integrated-terminal .jup-gradient {
   position: relative;
   z-index: 1;
@@ -127,4 +130,37 @@
 #integrated-terminal input {
   color: white !important;
   opacity: 1 !important;
+}
+
+/* ----------------------------------------------------------------------------
+   Miscellaneous & Utility Classes
+   ---------------------------------------------------------------------------- */
+/* Hide scrollbar completely */
+.hideScrollbar {
+  -ms-overflow-style: none;
+}
+.hideScrollbar::-webkit-scrollbar {
+  display: none;
+}
+.hideScrollbar::-moz-scrollbar {
+  display: none;
+}
+
+/* Custom scrollbar for .webkit-scrollbar usage */
+.webkit-scrollbar::-webkit-scrollbar {
+  width: 8px;
+}
+.webkit-scrollbar::-webkit-scrollbar-thumb {
+  margin: 2px;
+  border-radius: 10px;
+  background: #979797;
+}
+
+/* Tooltip styles */
+.jupiter-tooltip {
+  @apply invisible absolute;
+  @apply bg-black text-white p-2 rounded-lg;
+}
+.jupiter-has-tooltip:hover .jupiter-tooltip {
+  @apply visible z-50;
 }
