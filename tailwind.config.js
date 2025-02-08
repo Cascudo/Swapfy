@@ -10,7 +10,11 @@ module.exports = {
   darkMode: 'class',
   content: ['./src/**/*.{js,ts,jsx,tsx}'],
   safelist: [
-    // Original safelist
+    // Temporary pattern to prevent purging
+    {
+      pattern: /.*/,
+    },
+    // Existing safelist classes
     'text-xs',
     'text-sm',
     'text-md',
@@ -19,7 +23,6 @@ module.exports = {
     'font-semibold',
     'text-white',
     'text-opacity-100',
-    // Newly added classes
     'h-10',
     'py-3',
     'px-4',
@@ -29,7 +32,6 @@ module.exports = {
   ],
   theme: {
     extend: {
-      // Keep existing colors
       colors: {
         info: '#5762F1',
         'jupiter-input-light': '#EBEFF1',
@@ -60,13 +62,11 @@ module.exports = {
         'utility-warning-300': '#B54708',
         'utility-warning-600': '#FDB022',
       },
-      // Keep original + new fontSize
       fontSize: {
         xxs: ['0.625rem', '1rem'],
         xs: ['0.75rem', '1rem'],
         sm: ['0.875rem', '1.25rem'],
       },
-      // Newly added (height, padding, borderRadius, spacing)
       height: {
         10: '2.5rem',
       },
@@ -84,7 +84,6 @@ module.exports = {
         3: '0.75rem',
         4: '1rem',
       },
-      // Keep original backgroundImage, keyframes, animation, boxShadow
       backgroundImage: {
         'v3-text-gradient': 'linear-gradient(247.44deg, #C7F284 13.88%, #00BEF0 99.28%)',
       },
